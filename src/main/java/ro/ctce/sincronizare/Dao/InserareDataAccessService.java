@@ -3,8 +3,6 @@ package ro.ctce.sincronizare.Dao;
 import org.apache.commons.lang.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.PreparedStatementCreator;
-import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import ro.ctce.sincronizare.Entities.*;
 import ro.ctce.sincronizare.Mapper.DataObjectRowMapper;
@@ -186,7 +184,7 @@ public class InserareDataAccessService implements InserareDao {
 //                            idstadiu,
 //                            idSectie,
                     );
-                    int[] iduri = saveDosar(dosarDB);
+                    Map<String,Object> iduri = saveDosar(dosarDB);
                     int iddosar = iduri[0];
                     int idstadiudosar = iduri[1];
                     Map<String, String> valPD = new HashMap<>();
@@ -196,7 +194,7 @@ public class InserareDataAccessService implements InserareDao {
                     int idPDClient = savePartiDosar(valPD);
 
                     Map<String, String> valObDosar = new HashMap<>();
-                    //valObDosar.put("iddosar", iddosar);
+                    valObDosar.put("iddosar", String.valueOf(iddosar));
                     valObDosar.put("idobiect", String.valueOf(idobiect));
                     System.out.println(saveObiecteDosar(valObDosar));
                     for (Sedinte termen : sedinteList) {
@@ -306,7 +304,7 @@ public class InserareDataAccessService implements InserareDao {
     }
 
 
-    public int saveObiecteDosar(Map<String, String> data) {
+    public Object saveObiecteDosar(Map<String, String> data) {
         if (!data.get("iddosar").isEmpty() && !data.get("idobiect").isEmpty()) {
             Integer cnt = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM dosare_" + client.getBazaDeDate() + ".obiectedosar WHERE iddosar=? AND idobiect=?",
@@ -317,13 +315,11 @@ public class InserareDataAccessService implements InserareDao {
                 Integer id = jdbcTemplate.queryForObject(
                         "SELECT id FROM dosare_" + client.getBazaDeDate() + ".obiectedosar WHERE iddosar=? AND idobiect=?",
                         Integer.class, data.get("iddosar"), data.get("idobiect"));
-                assert id != null;
                 return id;
             } else {
                     String insertQuery = "INSERT INTO obiectedosar(iddosar, idobiect) VALUES(?, ?)";
                     jdbcTemplate.update(insertQuery, data.get("iddosar"), data.get("idobiect"));
                     Integer idod = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
-                    assert idod != null;
                     Map<String, Object> did=new HashMap<>();
                     did.put("iduser", client.getUserId());
                     did.put("iddosar", data.get("iddosar"));
@@ -337,14 +333,96 @@ public class InserareDataAccessService implements InserareDao {
                     return idod;
             }
         }
-        return -1;
+        return null;
     }
-    public int savePartiDosar(Map<String,String> valPD){
-        return 1;
+    public Integer savePartiDosar(Map<String,String> valPD){
+        if (!valPD.get("iddosar").isEmpty() && !valPD.get("idobiect").isEmpty()) {
+            Integer cnt = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM dosare_" + client.getBazaDeDate() + ".partidosar WHERE idparte=? AND idcalitate=? AND idstadiudosar=?",
+                    Integer.class,
+                    valPD.get("idparte"), valPD.get("idcalitate"),valPD.get("idstadiudosar"));
+
+            if (!Objects.equals(cnt, 0)) {
+                return jdbcTemplate.queryForObject(
+                        "SELECT id FROM dosare_" + client.getBazaDeDate() + ".partidosar WHERE idparte=? AND idcalitate=? AND idstadiudosar=? LIMIT 1",
+                        Integer.class, valPD.get("iddosar"), valPD.get("idobiect"));
+            } else {
+                String insertQuery = "INSERT INTO dosare_" + client.getBazaDeDate() + ".partidosar(idparte, idcalitate, idstadiudosar) VALUES(?, ?,?)";
+                jdbcTemplate.update(insertQuery, valPD.get("idparte"), valPD.get("idcalitate"),valPD.get("idstadiudosar"));
+                Integer idod = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
+                Map<String, Object> did=new HashMap<>();
+                did.put("iduser", client.getUserId());
+                did.put("iddosar", 0);
+                did.put("tip", "Adaugare parte dosar");
+                did.put("descriere", "partidosar["+idod+"],parti["+valPD.get("idparte")+"],stadiidosar["+valPD.get("idstadiudosar"));
+                did.put("data", now);
+
+                jdbcTemplate.update(
+                        "INSERT INTO dosare_" + client.getBazaDeDate() + ".istoricdosare(iddosar, iduser, tip, descriere, data) VALUES(?, ?, ?, ?, ?)",
+                        did.get("iddosar"), did.get("iduser"), did.get("tip"), did.get("descriere"), did.get("data"));
+                return idod;
+            }
+        }
+        return null;
     }
-    public int[] saveDosar(Dosar dosarDB){
-        return new int[]{1,1};
+    public Map<String, Object> saveDosar(Dosar data) {
+        if (!data.getSolutiedosar().isEmpty()) {
+            data.setSolutiedosar("");
+        }
+        boolean nrd = true;
+
+        if ("".equals(
+                data.getNumarDosar() + data.getInstantadosar() + data.getAndosar() + data.getAccesoriidosar())) {
+            nrd = false;
+            if ("".equals(data.getNrIntern())) {
+                return null;
+            }
+        }
+        String query;
+        Object[] params;
+        List<Map<String, Object>> result;
+
+        if (nrd) {
+            query = "SELECT COUNT(*) AS cnt FROM dosare_" + client.getBazaDeDate() + ".dosare WHERE numardosar=? AND instantadosar=? AND andosar=? " +
+                    "AND accesoriidosar=? AND sters=0";
+            params = new Object[]{data.getNumarDosar(), data.getInstantadosar(), data.getAndosar(),
+                    data.getAccesoriidosar()};
+        } else {
+            query = "SELECT COUNT(*) AS cnt FROM dosare_" + client.getBazaDeDate() + ".dosare WHERE numarintern=? AND sters=0";
+            params = new Object[]{data.getNrIntern()};
+        }
+
+        result = jdbcTemplate.queryForList(query, params);
+
+        Integer sd = null;
+        try {
+            int cnt = 0;
+            for (Map<String, Object> row : result) {
+                cnt = ((Number) row.get("cnt")).intValue();
+            }
+            if (cnt > 0) {
+                // Existing dosar logic
+                // ...
+
+            } else {
+                // New dosar logic
+                // ...
+
+            }
+        } catch (Exception e) {
+            System.err.println("Error saving dosar: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        // Return your result as needed
+        // ...
+        return null;
     }
+
+    // Other methods for database operations
+    // ...
+}
+
     public int saveStadii(Map<String,String> optStadii){
         return 1;
     }
