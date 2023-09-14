@@ -17,6 +17,8 @@ import ro.ctce.sincronizare.Mapper.DosareRowMapper;
 import ro.ctce.sincronizare.Service.FileService;
 
 import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -449,7 +451,7 @@ public class InserareDataAccessService implements InserareDao {
                     String denobiectdosar = "";
                     String observatii = "";
                     String descriere = data.get("descriere").toString().replace("\n", " ");
-
+                    int userid=0;
                     if (!iddosar.isEmpty()) {
                         nrdosar = getNrUnicDosar5(iddosar);
                         partiDosar = getListaPartiDosar(iddosar);
@@ -458,7 +460,7 @@ public class InserareDataAccessService implements InserareDao {
                         int idobiectdosar = getIdObiectRecent(iddosar);
                         denobiectdosar = getDenumireByIdObiecte(idobiectdosar).replace("\n", " ");
                         observatii = getObservatiiDosar(iddosar).replace("\n", " ");
-                        int userid = getUserIdDosar(Integer.parseInt(iddosar));
+                        userid = getUserIdDosar(Integer.parseInt(iddosar));
                     }
 
                     StringBuilder mesaj = new StringBuilder("<font face=\"tahoma\">");
@@ -501,12 +503,9 @@ public class InserareDataAccessService implements InserareDao {
 
                     atentionari.add(attn);
 
-                    //setNotificariAtentionari(atentionari, userid);
+                    setNotificariAtentionari(atentionari, userid);
                 }
 
-//            } else if ("1".equals(notifAnterioara)) {
-//                // Delete from Notificari if needed
-//                // ...
             }
         }
                 catch(
@@ -518,59 +517,98 @@ public class InserareDataAccessService implements InserareDao {
     }
         return -1;
 }
-//    public void setNotificariAtentionari(List<Map<String, Object>> atentionari, int userId) {
-//
-//        String licenta = getLicenta();
-//
-//        String username;
-//        if (userId > 0) {
-//            username = getUsernameById(userId);
-//        } else {
-//            username = "";
-//        }
-//
-//        String url = "https://dosare.ctce.ro/Notificari/listenerws.php?wsdl";
-//
-//        try {
-//            HttpClient httpClient = HttpClients.createDefault();
-//            HttpPost httpPost = new HttpPost(url);
-//
-//            // Prepare the parameters
-//            List<NameValuePair> params = new ArrayList<>();
-//            params.add(new BasicNameValuePair("licenta", licenta));
-//            params.add(new BasicNameValuePair("denumire", username));
-//
-//            String atentionariJson = convertAtentionariToJson(atentionari);
-//            params.add(new BasicNameValuePair("atentionari", atentionariJson));
-//
-//            // Set the parameters in the request
-//            httpPost.setEntity(new UrlEncodedFormEntity(params));
-//
-//            // Execute the request
-//            HttpResponse response = httpClient.execute(httpPost);
-//
-//            // Handle the response as needed
-//            HttpEntity entity = response.getEntity();
-//            if (entity != null) {
-//                BufferedReader reader = new BufferedReader(new InputStreamReader(entity.getContent()));
-//                String line;
-//                StringBuilder result = new StringBuilder();
-//                while ((line = reader.readLine()) != null) {
-//                    result.append(line);
-//                }
-//                // Parse and handle the result here
-//                String responseString = result.toString();
-//                // Return true or false based on the response
-//                handleResponse(responseString);
-//            }
-//
-//        } catch (Exception e) {
-//            // Handle any exceptions here if needed
-//            System.out.println("Eroare la adaugare/modificare notificari Atentionari: " + e.getMessage());
-//        }
-//    }
+    public String setNotificariAtentionari(List<Map<String,Object>> atentionari, int userId) {
+        String licenta = getLicenta();
+        String username = (userId != 0) ? getUsernameById(userId) : "";
 
-    public String getObservatiiDosar(String iddosar) {
+        String soapEndpointUrl = "https://dosare.ctce.ro/Notificari/listenerws.php";
+        String soapAction = "setNotificare";
+
+        try {
+            URL url = new URL(soapEndpointUrl);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+
+            // Set the necessary HTTP request headers
+            connection.setRequestMethod("POST");
+            connection.setRequestProperty("Content-Type", "text/xml; charset=UTF-8");
+            connection.setRequestProperty("SOAPAction", soapAction);
+            connection.setDoOutput(true);
+
+            // Construct the SOAP request payload
+            String soapRequest = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:web=\"http://web.com/\">\n"
+                    + "   <soapenv:Header/>\n"
+                    + "   <soapenv:Body>\n"
+                    + "      <web:setNotificare>\n"
+                    + "         <licenta>" + licenta + "</licenta>\n"
+                    + "         <denumire>" + username + "</denumire>\n"
+                    + "         <atentionari>" + atentionari + "</atentionari>\n"
+                    + "      </web:setNotificare>\n"
+                    + "   </soapenv:Body>\n"
+                    + "</soapenv:Envelope>";
+
+            // Send the SOAP request
+            try (OutputStream os = connection.getOutputStream()) {
+                byte[] input = soapRequest.getBytes(StandardCharsets.UTF_8);
+                os.write(input, 0, input.length);
+            }
+
+            // Get the SOAP response
+            int responseCode = connection.getResponseCode();
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                String line;
+                StringBuilder response = new StringBuilder();
+
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+                reader.close();
+
+                // Parse and return the response here
+                return response.toString();
+            } else {
+                // Handle the error
+                return "HTTP Error: " + responseCode;
+            }
+        } catch (Exception e) {
+            // Handle exceptions here
+            e.printStackTrace();
+            return "Error: " + e.getMessage();
+        }
+    }
+    public String getUsernameById(int id) {
+
+        if (id == 0) {
+            return null;
+        }
+
+        String sql = "SELECT name FROM " + client.getBazaDeDate() + ".users WHERE id = ?";
+
+        try {
+            String name = jdbcTemplate.queryForObject(sql, String.class,id);
+            if (name != null) {
+                return name;
+            }
+        } catch (Exception e) {
+           e.printStackTrace();
+           return null;
+        }
+
+        return null;
+    }
+
+    public String getLicenta() {
+        String sql = "SELECT serialno FROM " + client.getBazaDeDate() + ".status";
+        List<String> results = jdbcTemplate.queryForList(sql, String.class);
+
+        if (!results.isEmpty()) {
+            return results.get(0);
+        } else {
+            return null;
+        }
+    }
+
+        public String getObservatiiDosar(String iddosar) {
 
         if (Integer.parseInt(iddosar) == 0) {
             return null;
@@ -1505,7 +1543,7 @@ public class InserareDataAccessService implements InserareDao {
             return 0; // Error occurred
         }
 
-        return 0; // Cannot insert a sectie without denumire
+        return 0;
     }
     public int getIdInstantaByDenumirejustro(String denumireJustro) {
         Integer id;
@@ -1689,7 +1727,6 @@ public class InserareDataAccessService implements InserareDao {
 
             return entry;
         } catch (Exception e) {
-            // Handle the exception, log or print an error message
             e.printStackTrace();
             return null;
         }

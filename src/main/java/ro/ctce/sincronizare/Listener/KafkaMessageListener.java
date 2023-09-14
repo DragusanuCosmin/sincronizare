@@ -8,6 +8,7 @@ import ro.ctce.sincronizare.Entities.Clienti;
 import ro.ctce.sincronizare.Entities.SolrFile;
 import ro.ctce.sincronizare.Mapper.ClientiRowMapper;
 import ro.ctce.sincronizare.Service.FileService;
+import ro.ctce.sincronizare.Service.InserareService;
 
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
@@ -22,37 +23,27 @@ import java.util.stream.Collectors;
 public class KafkaMessageListener {
     private final JdbcTemplate jdbcTemplate;
     private final FileService fileService;
+    private final InserareService inserareService;
     @Autowired
-    public KafkaMessageListener(JdbcTemplate jdbcTemplate, FileService fileService) {
+    public KafkaMessageListener(JdbcTemplate jdbcTemplate, FileService fileService, InserareService inserareService) {
         this.jdbcTemplate = jdbcTemplate;
         this.fileService = fileService;
+        this.inserareService = inserareService;
     }
     @KafkaListener(topics = "dosare_noi", groupId = "test-consumer-group")
     public void listen(String nrDosar) {
         final String sql = "SELECT * FROM indexdosare.clienti WHERE nr_dosar=?";
         List<Clienti> clienti = jdbcTemplate.query(sql, new ClientiRowMapper(), nrDosar);
-        SolrFile dosar=fileService.findByNumardosar(nrDosar).getContent().get(0);
+        if (clienti.isEmpty()) {
+            return;
+        }
         ExecutorService executor = Executors.newFixedThreadPool(clienti.size());
         for (Clienti client : clienti) {
             executor.execute(() -> {
-                if (exists(nrDosar, client.getBazaDeDate())) {
-                    InlocuireDosar(dosar, client);
-                } else {
-                    AdaugareDosar(dosar, client);
-                }
+                inserareService.adaugareDatabase(client);
             });
         }
         executor.shutdown();
-    }
-    public void InlocuireDosar(SolrFile dosar,Clienti clienti) {
-        String[] str=convert(dosar.getNumardosar());
-        final String sql = "UPDATE "+ clienti.getBazaDeDate()+".dosare SET id=?, userid = ? ,datacreare=?,dataum=?,numarintern=?, dosarinstanta = ? , numardosar = ? , instantadosar = ? ,andosar=?, accesoriidosar=?,solutionatfavorabil = ?, valoaredosar = ?, valoarerecuperata = ?, datafinalizare = ?, idclient = ?, idstare = ?, finalizat = ?,bpublic = ?  , sters = ?  , comentarii = ? , solutiedosar = ? , dataumSCJ = ? , idparteadversa = ?, rezultat = ?,sentintaprimita=? WHERE numardosar=?";
-        jdbcTemplate.update(sql,null,clienti.getUserId(),dosar.getData(),dosar.getDatamodificarii(),null,clienti.getUserId(),str[0],str[1],str[2],str[3],null,null,null,null,null,null,null,0,null,0,null,null,"1971-01-01 05:00",null,null,null);
-    }
-    public void AdaugareDosar(SolrFile dosar,Clienti clienti) {
-        String[] str=convert(dosar.getNumardosar());
-        final String sql = "UPDATE "+ clienti.getBazaDeDate()+".dosare SET id=?, userid = ? ,datacreare=?,dataum=?,numarintern=?, dosarinstanta = ? , numardosar = ? , instantadosar = ? ,andosar=?, accesoriidosar=?,solutionatfavorabil = ?, valoaredosar = ?, valoarerecuperata = ?, datafinalizare = ?, idclient = ?, idstare = ?, finalizat = ?,bpublic = ?  , sters = ?  , comentarii = ? , solutiedosar = ? , dataumSCJ = ? , idparteadversa = ?, rezultat = ?,sentintaprimita=? WHERE numardosar=?";
-        jdbcTemplate.update(sql,null,clienti.getUserId(),dosar.getData(),dosar.getDatamodificarii(),null,clienti.getUserId(),str[0],str[1],str[2],str[3],null,null,null,null,null,null,null,0,null,0,null,null,"1971-01-01 05:00",null,null,null);
     }
     public boolean exists(String nrdosar,String bazaDeDate) {
         String query = "SELECT COUNT(*) FROM "+bazaDeDate+".dosaresolr WHERE numardosar = ?";
