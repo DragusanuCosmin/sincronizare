@@ -4,6 +4,7 @@ import ro.ctce.sincronizare.Entities.Dosar;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.Date;
 
 public class DosareRowMapper implements RowMapper<Dosar> {
@@ -49,6 +50,10 @@ public class DosareRowMapper implements RowMapper<Dosar> {
             valoaredosar = rs.getDouble("valoaredosar");
             valoarerecuperata = rs.getDouble("valoarerecuperata");
             dataFinalizare = rs.getDate("datafinalizare");
+            if (dataFinalizare != null && dataFinalizare.equals(new Date(0))) {
+                System.out.println("data finalizare null");
+                dataFinalizare = null;
+            }
             idClient = rs.getInt("idclient");
             idStare = rs.getInt("idstare");
             finalizat = rs.getBoolean("finalizat");

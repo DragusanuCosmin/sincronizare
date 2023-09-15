@@ -16,6 +16,7 @@ public class FileService {
         this.dosarSolrDao = dosarSolrDao;
     }
     public Page<SolrFile> findByNumardosar(String searchTerm){
+        System.out.println(searchTerm);
         return dosarSolrDao.findByNumardosarContainingCustom(searchTerm, PageRequest.of(0, 10));
     }
 }

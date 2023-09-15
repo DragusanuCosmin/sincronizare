@@ -59,9 +59,9 @@ public class InserareDataAccessService implements InserareDao {
             if (dosar.getAndosar() != null)
                 sb.append(dosar.getAndosar()).append("/");
             if (dosar.getAccesoriidosar() != null)
-                sb.append(dosar.getAccesoriidosar()).append("/");
+                sb.append(dosar.getAccesoriidosar());
             String nrDosar = sb.toString();
-            List<SolrFile> dosareSolr = fileService.findByNumardosar(nrDosar).getContent();
+            List<SolrFile> dosareSolr = fileService.findByNumardosar(nrDosar.substring(0,nrDosar.length()-1)).getContent();
             for (SolrFile dosarSolr : dosareSolr) {
                 List<Map<String, String>> partiList = new ArrayList<>();
                 for (int i = 0; i < Math.min(dosarSolr.getCalitateparte().size(), dosarSolr.getNumeparte().size()); i++) {
@@ -104,10 +104,11 @@ public class InserareDataAccessService implements InserareDao {
                 String materieJustRo = dosarSolr.getMaterie();
                 String obiectDosar = dosarSolr.getObiect();
                 List<String> numeClient = dosarSolr.getNumeparte();
-                String dataDosar = ZonedDateTime.parse(String.valueOf(dosarSolr.getData())).format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-                Date DataUMPJR = new Date();
-                Date DataUMSCJ = new Date();
-                String dataStadiuDosar = ZonedDateTime.parse(String.valueOf(dosarSolr.getData())).format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+                //System.out.println(dosarSolr.getData().toString());
+                //String dataDosar = ZonedDateTime.parse(String.valueOf(dosarSolr.getData())).format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+                //Date DataUMPJR = new Date();
+                //Date DataUMSCJ = new Date();
+                String dataStadiuDosar = ZonedDateTime.parse(dosarSolr.getData().toString(), DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss zzz uuuu")).format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
                 String sectie = dosarSolr.getSectie();
                 int idInstantaStadiuDosar = getIdInstantaByDenumirejustro(dosarSolr.getInstitutie());
                 Map<String, String> valSectie = new HashMap<>();
@@ -205,7 +206,7 @@ public class InserareDataAccessService implements InserareDao {
 
         String logDirectory = "autosync/log-sincronizari/" + month;
         if (!new java.io.File(logDirectory).isDirectory()) {
-            new java.io.File(logDirectory).mkdirs();
+            System.out.println(new java.io.File(logDirectory).mkdirs());
         }
 
         String logFileName = "/sincronizare.1_" + System.currentTimeMillis() + ".log";
@@ -1509,7 +1510,7 @@ public class InserareDataAccessService implements InserareDao {
                         did.put("tip", "Adaugare sectie");
                         did.put("descriere", "sectii[" + insertedId + "],info[" + data.get("denumire") + "]");
                         did.put("data", now());
-
+                        System.out.println(did.get("descriere"));
                         String insertHistoricSql = "INSERT INTO " + client.getBazaDeDate() + ".istoricdosare(iddosar, iduser, tip, descriere, data) " +
                                 "VALUES (?, ?, ?, ?, ?)";
 

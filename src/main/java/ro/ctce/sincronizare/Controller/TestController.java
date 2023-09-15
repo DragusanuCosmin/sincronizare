@@ -9,6 +9,7 @@ import ro.ctce.sincronizare.Entities.Clienti;
 import ro.ctce.sincronizare.Entities.SolrFile;
 import ro.ctce.sincronizare.Mapper.ClientiRowMapper;
 import ro.ctce.sincronizare.Service.FileService;
+import ro.ctce.sincronizare.Service.InserareService;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -20,10 +21,21 @@ import java.util.stream.Collectors;
 public class TestController {
     public final FileService fileService;
     public final JdbcTemplate jdbcTemplate;
+    public final InserareService inserareService;
     @Autowired
-    public TestController(FileService fileService, JdbcTemplate jdbcTemplate) {
+    public TestController(FileService fileService, JdbcTemplate jdbcTemplate, InserareService inserareService) {
         this.fileService = fileService;
         this.jdbcTemplate = jdbcTemplate;
+        this.inserareService = inserareService;
+    }
+    @GetMapping("/adaugare")
+    public void adaugareDatabase() {
+        final String sql = "SELECT * FROM indexdosare.clienti WHERE nr_dosar=?";
+        List<Clienti> clienti = jdbcTemplate.query(sql, new ClientiRowMapper(), "40/197/2019");
+        for (Clienti client : clienti) {
+            inserareService.adaugareDatabase(client);
+        }
+
     }
     @GetMapping("/test")
     public void test(@RequestBody String nrDosar) {
