@@ -22,12 +22,10 @@
 //@Component
 //public class KafkaMessageListener {
 //    private final JdbcTemplate jdbcTemplate;
-//    private final FileService fileService;
 //    private final InserareService inserareService;
 //    @Autowired
-//    public KafkaMessageListener(JdbcTemplate jdbcTemplate, FileService fileService, InserareService inserareService) {
+//    public KafkaMessageListener(JdbcTemplate jdbcTemplate, InserareService inserareService) {
 //        this.jdbcTemplate = jdbcTemplate;
-//        this.fileService = fileService;
 //        this.inserareService = inserareService;
 //    }
 //    @KafkaListener(topics = "dosare_noi", groupId = "test-consumer-group")

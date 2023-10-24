@@ -1,10 +1,8 @@
 package ro.ctce.sincronizare.Dao;
 
-import ro.ctce.sincronizare.Entities.Clienti;
-
-import java.util.List;
+import ro.ctce.sincronizare.Entities.SolrFile;
 
 public interface InserareDao {
-    void AdaugareDatabase(Clienti client);
+    void Sincronizare( SolrFile dosarSolr);
 
 }

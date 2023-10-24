@@ -21,7 +21,7 @@ public class ActualizareDataAccessService implements ActualizareDao {
     }
     @Override
     public void stergereDatabase(String nrDosar) {
-        final String sql="delete from indexdosare.clienti where nr_dosar=?";
+        final String sql="delete from indexdosare.clienti where user_id=?";
         jdbcTemplate.update(sql,nrDosar);
     }
     @Override

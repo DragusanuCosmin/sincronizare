@@ -1,17 +1,17 @@
 package ro.ctce.sincronizare.Mapper;
+
 import org.springframework.jdbc.core.RowMapper;
 import ro.ctce.sincronizare.Entities.Dosar;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.LocalDate;
 import java.util.Date;
 
 public class DosareRowMapper implements RowMapper<Dosar> {
     @Override
     public Dosar mapRow(ResultSet rs, int rowNum) {
          int id;
-         int userid;
+         String userid;
          Date dataCreare;
          Date dataUM;
          String nrIntern;
@@ -37,7 +37,7 @@ public class DosareRowMapper implements RowMapper<Dosar> {
          String sentintaPrimita;
         try {
             id = rs.getInt("id");
-            userid = rs.getInt("userid");
+            userid = rs.getString("userid");
             dataCreare = rs.getDate("datacreare");
             dataUM = rs.getDate("dataum");
             nrIntern = rs.getString("numarintern");

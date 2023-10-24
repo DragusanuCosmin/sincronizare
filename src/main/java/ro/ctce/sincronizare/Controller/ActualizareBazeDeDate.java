@@ -1,7 +1,10 @@
 package ro.ctce.sincronizare.Controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import ro.ctce.sincronizare.Entities.Clienti;
 import ro.ctce.sincronizare.Service.ActualizareService;
 
@@ -23,7 +26,7 @@ public class ActualizareBazeDeDate {
         actualizareService.stergereDatabase(nrDosar);
     }
     @PostMapping("/actualizare")
-    public void actualizareDatabase(Clienti clienti){
+    public void actualizareDatabase(@RequestBody Clienti clienti){
         actualizareService.actualizareDatabase(clienti);
     }
 }

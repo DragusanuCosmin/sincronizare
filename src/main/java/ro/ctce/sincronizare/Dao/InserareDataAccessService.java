@@ -1,186 +1,133 @@
 package ro.ctce.sincronizare.Dao;
 
 import org.apache.commons.lang.StringUtils;
-import org.apache.http.HttpEntity;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.message.BasicNameValuePair;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Repository;
-import ro.ctce.sincronizare.Entities.*;
-import ro.ctce.sincronizare.Mapper.DosareRowMapper;
+import ro.ctce.sincronizare.Entities.Clienti;
+import ro.ctce.sincronizare.Entities.SolrFile;
+import ro.ctce.sincronizare.Mapper.ClientiRowMapper;
 import ro.ctce.sincronizare.Service.FileService;
+import ro.ctce.sincronizare.Service.LogService;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.http.HttpClient;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 @Repository("InserareDao")
 public class InserareDataAccessService implements InserareDao {
-    private final FileService fileService;
     private final JdbcTemplate jdbcTemplate;
-    private Clienti client;
 
+    public static void setClient(Clienti client) {
+        InserareDataAccessService.client = client;
+    }
+    private static Clienti client;
     @Autowired
-    public InserareDataAccessService(FileService fileService, JdbcTemplate jdbcTemplate) {
-        this.fileService = fileService;
+    public InserareDataAccessService( JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
-
     @Override
-    public void AdaugareDatabase(Clienti client) {
-        this.client = client;
-        String sql = "select * from " + client.getBazaDeDate() + ".dosare where userid=?";
-        List<Dosar> dosare = jdbcTemplate.query(sql, new DosareRowMapper(), client.getUserId());
-        for (Dosar dosar : dosare) {
-            StringBuilder sb = new StringBuilder();
-            if (dosar.getNumarDosar() != null)
-                sb.append(dosar.getNumarDosar()).append("/");
-            if (dosar.getInstantadosar() != null)
-                sb.append(dosar.getInstantadosar()).append("/");
-            if (dosar.getAndosar() != null)
-                sb.append(dosar.getAndosar()).append("/");
-            if (dosar.getAccesoriidosar() != null)
-                sb.append(dosar.getAccesoriidosar());
-            String nrDosar = sb.toString();
-            List<SolrFile> dosareSolr = fileService.findByNumardosar(nrDosar.substring(0,nrDosar.length()-1)).getContent();
-            for (SolrFile dosarSolr : dosareSolr) {
-                List<Map<String, String>> partiList = new ArrayList<>();
-                for (int i = 0; i < Math.min(dosarSolr.getCalitateparte().size(), dosarSolr.getNumeparte().size()); i++) {
-                    String nume = dosarSolr.getNumeparte().get(i);
-                    String calitateParte = dosarSolr.getCalitateparte().get(i);
-                    Map<String, String> parti = new HashMap<>();
-                    parti.put("nume", nume);
-                    parti.put("calitateParte", calitateParte);
-                    partiList.add(parti);
-                }
-                int cnt1 = dosarSolr.getOra() != null ? dosarSolr.getOra().size() : 0;
-                int cnt2 = dosarSolr.getDatadocument() != null ? dosarSolr.getDatadocument().size() : 0;
-                int cnt3 = dosarSolr.getSolutie() != null ? dosarSolr.getSolutie().size() : 0;
-                int cnt4 = dosarSolr.getSolutiesumar() != null ? dosarSolr.getSolutiesumar().size() : 0;
-                int cnt5 = dosarSolr.getNumardocument() != null ? dosarSolr.getNumardocument().size() : 0;
-                int cnt6 = dosarSolr.getDatapronuntare() != null ? dosarSolr.getDatapronuntare().size() : 0;
-                int cnt7 = dosarSolr.getDocumentsedinta() != null ? (dosarSolr.getDocumentsedinta()).size() : 0;
-                int cnt8 = dosarSolr.getDatasedinta() != null ? dosarSolr.getDatasedinta().size() : 0;
-                int cnt9 = dosarSolr.getComplet() != null ? dosarSolr.getComplet().size() : 0;
-                List<Map<String, String>> sedinteList = new ArrayList<>();
-                for (int i = 0; i < min(Arrays.asList(cnt1, cnt2, cnt3, cnt4, cnt5, cnt6, cnt7, cnt8, cnt9)); i++) {
-                    if (dosarSolr.getDatasedinta().get(i).toString().contains("1900-01"))
-                        dosarSolr.setDataSedintai(i, new Date());
-                    if (dosarSolr.getDatadocument().get(i).toString().contains("1900-01"))
-                        dosarSolr.setDataDocumenti(i, new Date());
-                    if (dosarSolr.getDatapronuntare().get(i).toString().contains("1900-01"))
-                        dosarSolr.setDataPronuntarei(i, new Date());
-                    Map<String, String> s = new HashMap<>();
-                    s.put("complet", dosarSolr.getComplet() != null && dosarSolr.getComplet().size() > i ? dosarSolr.getComplet().get(i) : ".");
-                    s.put("datasedinta", dosarSolr.getDatasedinta() != null && dosarSolr.getDatasedinta().size() > i ? String.valueOf(dosarSolr.getDatasedinta().get(i)) : ".");
-                    s.put("ora", dosarSolr.getOra() != null && dosarSolr.getOra().size() > i ? dosarSolr.getOra().get(i) : ".");
-                    s.put("solutie", dosarSolr.getSolutie() != null && dosarSolr.getSolutie().size() > i ? dosarSolr.getSolutie().get(i) : ".");
-                    s.put("solutiesumar", dosarSolr.getSolutiesumar() != null && dosarSolr.getSolutiesumar().size() > i ? dosarSolr.getSolutiesumar().get(i) : ".");
-                    s.put("datapronuntare", dosarSolr.getDatapronuntare() != null && dosarSolr.getDatapronuntare().size() > i ? String.valueOf(dosarSolr.getDatapronuntare().get(i)) : ".");
-                    s.put("documentsedinta", dosarSolr.getDocumentsedinta() != null && dosarSolr.getDocumentsedinta().size() > i ? dosarSolr.getDocumentsedinta().get(i) : ".");
-                    s.put("numardocument", dosarSolr.getNumardocument() != null && dosarSolr.getNumardocument().size() > i ? dosarSolr.getNumardocument().get(i) : ".");
-                    s.put("datadocument", dosarSolr.getDatadocument() != null && dosarSolr.getDatadocument().size() > i ? String.valueOf(dosarSolr.getDatadocument().get(i)) : ".");
-                    sedinteList.add(s);
-                }
-                String materieJustRo = dosarSolr.getMaterie();
-                String obiectDosar = dosarSolr.getObiect();
-                List<String> numeClient = dosarSolr.getNumeparte();
-                //System.out.println(dosarSolr.getData().toString());
-                //String dataDosar = ZonedDateTime.parse(String.valueOf(dosarSolr.getData())).format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-                //Date DataUMPJR = new Date();
-                //Date DataUMSCJ = new Date();
-                String dataStadiuDosar = ZonedDateTime.parse(dosarSolr.getData().toString(), DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss zzz uuuu")).format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-                String sectie = dosarSolr.getSectie();
-                int idInstantaStadiuDosar = getIdInstantaByDenumirejustro(dosarSolr.getInstitutie());
-                Map<String, String> valSectie = new HashMap<>();
-                valSectie.put("denumire", sectie);
-                int idSectie = saveSectii(valSectie);
-                String[] nreDosar = convert(dosarSolr.getNumardosar());
-                String numardosar = nreDosar[0];
-                String instantadosar = nreDosar[1];
-                String andosar = nreDosar[2];
-                String accesoriidosar = nreDosar[3];
-                if (existaDosar(numardosar, instantadosar, andosar, accesoriidosar)) {
-                    break;
-                }
-                Map<String, String> valMaterie = new HashMap<>();
-                valMaterie.put("denumire", materieJustRo);
-                valMaterie.put("denumirejustro", materieJustRo);
-                int idMaterie = saveMaterii(valMaterie);
-                Map<String, String> valObiect = new HashMap<>();
-                valObiect.put("idmaterie", String.valueOf(idMaterie));
-                valObiect.put("denumire", obiectDosar);
-                int idobiect = saveObiecte(valObiect);
-                Map<String, String> valParte = new HashMap<>();
-                valParte.put("numeprenume", partiList.get(0).get("nume"));
-                valParte.put("societate", partiList.get(0).get("nume"));
-                int idclient = saveParti(valParte);
-                Map<String, String> optStadii = new HashMap<>();
-                optStadii.put("denumire", dosarSolr.getStadiu());
-                optStadii.put("idmaterie", String.valueOf(idMaterie));
-                int idstadiu = saveStadii(optStadii);
+    public void Sincronizare(SolrFile dosarSolr){
+        try {
+            ExecutorService executorSrvc = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+            final List<Map<String, String>> partiList = getMapList(dosarSolr);
+            List<Map<String, String>> sedinteList = corectieDataDocument(dosarSolr);
+            String materieJustRo = dosarSolr.getMaterie();
+            String obiectDosar = dosarSolr.getObiect();
+            String dataStadiuDosar = ZonedDateTime.parse(dosarSolr.getData().toString(), DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss zzz uuuu")).format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            String sectie = dosarSolr.getSectie();
+            Future<Integer> idInstantaStadiuDosar = executorSrvc.submit(() -> getIdInstantaByDenumirejustro(dosarSolr.getInstitutie()));
+            Map<String, String> valSectie = new HashMap<>();
+            valSectie.put("denumire", sectie);
+            Future<Integer> idSectie = executorSrvc.submit(() -> saveSectii(valSectie));
+            String[] nreDosar = convert(dosarSolr.getNumardosar());
+            String numardosar = nreDosar[0];
+            String instantadosar = nreDosar[1];
+            String andosar = nreDosar[2];
+            String accesoriidosar = nreDosar[3];
+            Future<Integer> idMaterie = executorSrvc.submit(() -> saveMaterii(materieJustRo));
+            Map<String, String> valObiect = new HashMap<>();
+            valObiect.put("idmaterie", String.valueOf(idMaterie.get()));
+            valObiect.put("denumire", obiectDosar);
+            Future<Integer> idobiect = executorSrvc.submit(() -> saveObiecte(valObiect));
+            Map<String, String> valParte = new HashMap<>();
+            valParte.put("numeprenume", partiList.get(0).get("nume"));
+            valParte.put("societate", partiList.get(0).get("nume"));
+            Future<Integer> idclient = executorSrvc.submit(() -> saveParti(valParte));
+            Map<String, String> optStadii = new HashMap<>();
+            optStadii.put("denumire", dosarSolr.getStadiu());
+            optStadii.put("idmaterie", String.valueOf(idMaterie.get()));
+            Future<Integer> idstadiu = executorSrvc.submit(() -> saveStadii(optStadii));
 
-                Map<String, String> valCalitate = new HashMap<>();
-                valCalitate.put("denumire", partiList.get(0).get("calitateParte"));
-                valCalitate.put("idstadiu", String.valueOf(idstadiu));
-                valCalitate.put("calitateclient", "0");
-                int idcalitate = saveCalitati(valCalitate);
-                //insert into dosare
-                Map<String, String> dosardb = new HashMap<>();
-                dosardb.put("id", dosarSolr.getId());
-                dosardb.put("userid", client.getUserId());//? de ce aici normal era 1?
-                dosardb.put("datacreare", dosarSolr.getId());
-                dosardb.put("dataum", dosarSolr.getId());
-                dosardb.put("numarintern", null);
-                dosardb.put("dosarinstanta", "1");
-                dosardb.put("numardosar", numardosar);
-                dosardb.put("instantadosar", instantadosar);
-                dosardb.put("andosar", andosar);
+            Map<String, String> valCalitate = new HashMap<>();
+            valCalitate.put("denumire", partiList.get(0).get("calitateParte"));
+            valCalitate.put("idstadiu", String.valueOf(idstadiu.get()));
+            valCalitate.put("calitateclient", "0");
+            Future<Integer> idcalitate = executorSrvc.submit(() -> saveCalitati(valCalitate));
+            //insert into dosare
+            Map<String, String> dosardb = new HashMap<>();
+            dosardb.put("id", dosarSolr.getId());
+            dosardb.put("userid", client.getUserId());//? de ce aici normal era 1?
+            dosardb.put("datacreare", dosarSolr.getId());
+            SimpleDateFormat originalDateFormat = new SimpleDateFormat("EEE MMM dd HH:mm:ss zzz yyyy", Locale.ENGLISH);
+            originalDateFormat.setTimeZone(TimeZone.getTimeZone("EEST"));
+            try {
+                dosardb.put("dataum", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(originalDateFormat.parse(now().toString())));
+            } catch (ParseException e) {
+                System.out.println("Eroare la parsarea datii ultimei actualizari");
+            }
+            dosardb.put("dosarinstanta", "1");
+            dosardb.put("numardosar", numardosar);
+            dosardb.put("instantadosar", instantadosar);
+            dosardb.put("andosar", andosar);
+            if (!accesoriidosar.isEmpty())
                 dosardb.put("accesoriidosar", accesoriidosar);
-                dosardb.put("solutionatfavorabil", null);
-                dosardb.put("idclient", String.valueOf(idclient));
-                dosardb.put("idparteadversa", "0");
-                dosardb.put("idstare", "1");
-                dosardb.put("finalizat", "0");
-                dosardb.put("comentarii", "");
-                dosardb.put("idinstantaStadiuDosar", String.valueOf(idInstantaStadiuDosar));
-                dosardb.put("dataStadiuDosar", dataStadiuDosar);
-                dosardb.put("idstadiu", String.valueOf(idstadiu));
-                dosardb.put("idsectie", String.valueOf(idSectie));
-                Map<String, Object> iduri = saveDosar(dosardb);
-                int iddosar = Integer.parseInt(iduri.get("iddosar").toString());
-                int idstadiudosar = Integer.parseInt(iduri.get("idstadiudosar").toString());
-                Map<String, String> valPD = new HashMap<>();
-                valPD.put("idparte", String.valueOf(idclient));
-                valPD.put("idcalitate", String.valueOf(idcalitate));
-                valCalitate.put("idstadiudosar", String.valueOf(idstadiudosar));
-                System.out.println(savePartiDosar(valPD));
-                Map<String, String> valObDosar = new HashMap<>();
-                valObDosar.put("iddosar", String.valueOf(iddosar));
-                valObDosar.put("idobiect", String.valueOf(idobiect));
-                System.out.println(saveObiecteDosar(valObDosar));
+            dosardb.put("solutionatfavorabil", null);
+            dosardb.put("idclient", String.valueOf(idclient.get()));
+            dosardb.put("idparteadversa", "0");
+            dosardb.put("idstare", "1");
+            dosardb.put("finalizat", "0");
+            dosardb.put("comentarii", "");
+            dosardb.put("idinstantaStadiuDosar", String.valueOf(idInstantaStadiuDosar.get()));
+            dosardb.put("dataStadiuDosar", dataStadiuDosar);
+            dosardb.put("idstadiu", String.valueOf(idstadiu.get()));
+            dosardb.put("idsectie", String.valueOf(idSectie.get()));
+            Map<String, Object> iduri = saveDosar(dosardb);
+            int iddosar = Integer.parseInt(iduri.get("iddosar").toString());
+            int idstadiudosar = Integer.parseInt(iduri.get("idstadiudosar").toString());
+            Map<String, String> valPD = new HashMap<>();
+            valPD.put("idparte", String.valueOf(idclient));
+            valPD.put("idcalitate", String.valueOf(idcalitate.get()));
+            valPD.put("iddosar", String.valueOf(iddosar));
+            valPD.put("idobiect", String.valueOf(idobiect.get()));
+            valPD.put("idstadiudosar", String.valueOf(idstadiudosar));
+            executorSrvc.submit(() -> savePartiDosar(valPD));
+            Map<String, String> valObDosar = new HashMap<>();
+            valObDosar.put("iddosar", String.valueOf(iddosar));
+            valObDosar.put("idobiect", String.valueOf(idobiect.get()));
+            executorSrvc.submit(() -> (saveObiecteDosar(valObDosar)));
                 for (Map<String, String> termen : sedinteList) {
                     Map<String, Object> valTD = new HashMap<>();
-                    valTD.put("id", "");
+                    valTD.put("iddosar", Integer.parseInt(iduri.get("iddosar").toString()));
                     valTD.put("datatermen", termen.get("datasedinta").substring(0, dosarSolr.getData().toString().indexOf('T')) + " " + termen.get("ora"));
                     valTD.put("tipsolutie", termen.get("solutie").replace("'", "").replace("[", "").replace("]", ""));
                     valTD.put("sumarsolutie", termen.get("solutiesumar").replace("'", "").replace("[", "").replace("]", ""));
@@ -188,184 +135,212 @@ public class InserareDataAccessService implements InserareDao {
                     valTD.put("idstadiudosar", String.valueOf(idstadiudosar));
                     valTD.put("datadocument", termen.get("datadocument"));
                     valTD.put("numarDocument", termen.get("numardocument"));
-                    System.out.println(saveTermen(valTD, Integer.parseInt(iduri.get("iddosar").toString())));
-                }
-            }
-        }
-        String datastartsync = new SimpleDateFormat("yyyy-MM-dd:HH:mm:ss").format(now());
-        StringBuilder txt = new StringBuilder();
-        txt.append("Id client: ").append(client.getUserId()).append(System.lineSeparator());
-        txt.append("Data si ora inceput sincronizare: ").append(datastartsync).append(System.lineSeparator());
-        txt.append("Data si ora sfarsit sincronizare: ").append(new SimpleDateFormat("dd-MM-yyyy HH:mm:ss").format(new Date())).append(System.lineSeparator());
-        txt.append("Dosare actualizate: ").append(dosare.size());
-        String log = txt + System.lineSeparator() + "-------------------------" + System.lineSeparator();
-        txt.setLength(0);
-
-        SimpleDateFormat monthFormat = new SimpleDateFormat("yyyy.MM");
-        String month = monthFormat.format(new Date());
-
-        String logDirectory = "autosync/log-sincronizari/" + month;
-        if (!new java.io.File(logDirectory).isDirectory()) {
-            System.out.println(new java.io.File(logDirectory).mkdirs());
-        }
-
-        String logFileName = "/sincronizare.1_" + System.currentTimeMillis() + ".log";
-        String logFilePath = logDirectory + logFileName;
-
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(logFilePath, true))) {
-            writer.write(log);
-        } catch (IOException e) {
+                    executorSrvc.submit(() ->saveTermen(valTD));
+           }
+        }catch (Exception e){
             e.printStackTrace();
         }
+        }
 
-
+    private static List<Map<String, String>> getMapList(SolrFile dosarSolr) {
+        List<Map<String, String>> partiList = new ArrayList<>();
+        for (int i = 0; i < Math.min(dosarSolr.getCalitateparte().size(), dosarSolr.getNumeparte().size()); i++) {
+            String nume = dosarSolr.getNumeparte().get(i);
+            String calitateParte = dosarSolr.getCalitateparte().get(i);
+            Map<String, String> parti = new HashMap<>();
+            parti.put("nume", nume);
+            parti.put("calitateParte", calitateParte);
+            partiList.add(parti);
+        }
+        return partiList;
     }
 
-    public String saveTermen(Map<String, Object> data, int iddosar) {
-        try {
 
-            // Get the id of the stadii dosar
-            String sql = "SELECT iddosar FROM " + client.getBazaDeDate() + ".stadiidosasr WHERE id = ?";
+    private static Map<String, String> getStringStringMap(SolrFile dosarSolr, int i) {
+        Map<String, String> s = new HashMap<>();
+        s.put("complet", dosarSolr.getComplet() != null && dosarSolr.getComplet().size() > i ? dosarSolr.getComplet().get(i) : ".");
+        s.put("datasedinta", dosarSolr.getDatasedinta() != null && dosarSolr.getDatasedinta().size() > i ? String.valueOf(dosarSolr.getDatasedinta().get(i)) : ".");
+        s.put("ora", dosarSolr.getOra() != null && dosarSolr.getOra().size() > i ? dosarSolr.getOra().get(i) : ".");
+        s.put("solutie", dosarSolr.getSolutie() != null && dosarSolr.getSolutie().size() > i ? dosarSolr.getSolutie().get(i) : ".");
+        s.put("solutiesumar", dosarSolr.getSolutiesumar() != null && dosarSolr.getSolutiesumar().size() > i ? dosarSolr.getSolutiesumar().get(i) : ".");
+        s.put("datapronuntare", dosarSolr.getDatapronuntare() != null && dosarSolr.getDatapronuntare().size() > i ? String.valueOf(dosarSolr.getDatapronuntare().get(i)) : ".");
+        s.put("documentsedinta", dosarSolr.getDocumentsedinta() != null && dosarSolr.getDocumentsedinta().size() > i ? dosarSolr.getDocumentsedinta().get(i) : ".");
+        s.put("numardocument", dosarSolr.getNumardocument() != null && dosarSolr.getNumardocument().size() > i ? dosarSolr.getNumardocument().get(i) : ".");
+        s.put("datadocument", dosarSolr.getDatadocument() != null && dosarSolr.getDatadocument().size() > i ? String.valueOf(dosarSolr.getDatadocument().get(i)) : ".");
+        return s;
+    }
+
+    public void saveTermen(Map<String, Object> data) {
+        try {
+            String sql = "SELECT iddosar FROM " + client.getBazaDeDate() + ".stadiidosar WHERE id = ?";
             String idd = jdbcTemplate.queryForObject(sql, String.class, data.get("idstadiudosar"));
             assert idd != null;
-            if (StringUtils.isNotBlank(data.get("datatermen").toString()) && Integer.parseInt(idd) > 0) {
-                // Parse datatermen to get the date part and format it
-                String datatermen = data.get("datatermen").toString();
-                String datat = new SimpleDateFormat("yyyy-MM-dd").format(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(datatermen));
-                data.put("datatermen", datatermen);
+            // Parse datatermen to get the date part and format it
+            String datatermen = data.get("datatermen").toString();
+            String datat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH).format(new SimpleDateFormat("E MMM dd HH:mm:ss 'EE' HH:mm", Locale.ENGLISH).parse(datatermen));
+            data.put("datatermen", datatermen);
 
-                String qcomplet = "";
+            String qcomplet = "";
+            if (StringUtils.isNotBlank(data.get("complet").toString()) && !"-".equals(data.get("complet").toString())) {
+                qcomplet = " AND complet='" + data.get("complet").toString() + "' OR complet IS NULL OR complet='-' OR complet='' ";
+            }
 
-                // If we have 'complet' value, add it to the query
-                if (StringUtils.isNotBlank(data.get("complet").toString()) && !"-".equals(data.get("complet").toString())) {
-                    qcomplet = " AND (complet='" + data.get("complet").toString() + "' OR complet IS NULL OR complet='-' OR complet='') ";
-                }
+            sql = "SELECT count(*) AS cnt FROM " + client.getBazaDeDate() + ".termenedosar WHERE datatermen LIKE '" + datat + "%' AND idstadiudosar=" + data.get("idstadiudosar") + " " + qcomplet;
+            Integer cnt = jdbcTemplate.queryForObject(sql, Integer.class);
+            assert cnt != null;
+            if (!Objects.equals(cnt, 0)) {
+                // Termen already exists, return its id and update if the solution or summary is different
+                sql = "SELECT id, datatermen, tipsolutie, sumarsolutie, dataDocument, numarDocument, complet FROM " + client.getBazaDeDate() + ".termenedosar WHERE datatermen LIKE '" + datat + "%' AND idstadiudosar=" + data.get("idstadiudosar") + " " + qcomplet + " ORDER BY id DESC LIMIT 1";
+                Map<String, Object> result = jdbcTemplate.queryForMap(sql);
 
-                sql = "SELECT count(*) AS cnt FROM " + client.getBazaDeDate() + ".termenedosar WHERE datatermen LIKE '" + datat + "%' AND idstadiudosar=" + data.get("idstadiudosar") + " " + qcomplet;
-                Integer cnt = jdbcTemplate.queryForObject(sql, Integer.class);
-                assert cnt != null;
-                if (!Objects.equals(cnt, 0)) {
-                    // Termen already exists, return its id and update if the solution or summary is different
-                    sql = "SELECT id, datatermen, tipsolutie, sumarsolutie, dataDocument, numarDocument, complet FROM " + client.getBazaDeDate() + ".termenedosar WHERE datatermen LIKE '" + datat + "%' AND idstadiudosar=" + data.get("idstadiudosar") + " " + qcomplet + " ORDER BY id DESC LIMIT 1";
-                    Map<String, Object> result = jdbcTemplate.queryForMap(sql);
+                int id = Integer.parseInt(result.get("id").toString());
+                String tipsolutie = (String) result.get("tipsolutie");
+                String sumarsolutie = (String) result.get("sumarsolutie");
+                String dataDocument = (String) result.get("dataDocument");
+                String numarDocument = (String) result.get("numarDocument");
+                String complet = (String) result.get("complet");
 
-                    int id = Integer.parseInt(result.get("id").toString());
-                    String tipsolutie = (String) result.get("tipsolutie");
-                    String sumarsolutie = (String) result.get("sumarsolutie");
-                    String dataDocument = (String) result.get("dataDocument");
-                    String numarDocument = (String) result.get("numarDocument");
-                    String complet = (String) result.get("complet");
+                System.out.println(tipsolutie+" "+sumarsolutie+" "+dataDocument+" "+numarDocument+" "+complet);
+                String datatermenDB = (String) result.get("datatermen");
+                int orat = Integer.parseInt(datatermenDB.substring(11, 13));
 
-                    String datatermenDB = (String) result.get("datatermen");
-                    int orat = Integer.parseInt(datatermenDB.substring(11, 13));
+                if ((StringUtils.isBlank(tipsolutie) && StringUtils.isNotBlank(data.get("tipsolutie").toString())) ||
+                        (StringUtils.isBlank(sumarsolutie) && StringUtils.isNotBlank(data.get("sumarsolutie").toString())) ||
+                        ("0000-00-00".equals(dataDocument) && StringUtils.isNotBlank(data.get("dataDocument").toString())) ||
+                        (StringUtils.isBlank(numarDocument) && StringUtils.isNotBlank(data.get("numarDocument").toString())) ||
+                        ((0 != datatermenDB.compareTo(datatermen)) && orat == 0) ||
+                        (StringUtils.isBlank(complet) && StringUtils.isNotBlank(data.get("complet").toString()))) {
 
-                    if ((StringUtils.isBlank(tipsolutie) && StringUtils.isNotBlank(data.get("tipsolutie").toString())) ||
-                            (StringUtils.isBlank(sumarsolutie) && StringUtils.isNotBlank(data.get("sumarsolutie").toString())) ||
-                            ("0000-00-00".equals(dataDocument) && StringUtils.isNotBlank(data.get("dataDocument").toString())) ||
-                            (StringUtils.isBlank(numarDocument) && StringUtils.isNotBlank(data.get("numarDocument").toString())) ||
-                            ((0 != datatermenDB.compareTo(datatermen)) && orat == 0) ||
-                            (StringUtils.isBlank(complet) && StringUtils.isNotBlank(data.get("complet").toString()))) {
+                    data.put("id", id);
+                    String updateSql = "UPDATE " + client.getBazaDeDate() + ".termenedosar " +
+                            "SET datatermen=?, tipsolutie=?, sumarsolutie=?, " +
+                            "dataDocument=?, numarDocument=?, complet=? " +
+                            "WHERE id=?";
 
-                        data.put("id", id);
-                        String updateSql = "UPDATE " + client.getBazaDeDate() + ".termenedosar " +
-                                "SET datatermen=?, tipsolutie=?, sumarsolutie=?, " +
-                                "dataDocument=?, numarDocument=?, complet=? " +
-                                "WHERE id=?";
+                    jdbcTemplate.update(
+                            updateSql,
+                            data.get("datatermen"),
+                            data.get("tipsolutie"),
+                            data.get("sumarsolutie"),
+                            data.get("dataDocument"),
+                            data.get("numarDocument"),
+                            data.get("complet"),
+                            data.get("id")
+                    );
 
-                        jdbcTemplate.update(
-                                updateSql,
-                                data.get("datatermen"),
-                                data.get("tipsolutie"),
-                                data.get("sumarsolutie"),
-                                data.get("dataDocument"),
-                                data.get("numarDocument"),
-                                data.get("complet"),
-                                data.get("id")
-                        );
+                    Map<String, Object> did = new HashMap<>();
+                    did.put("iduser", client.getUserId());
+                    did.put("iddosar", idd);
+                    did.put("tip", "Modificare termen dosar");
+                    did.put("descriere", "termenedosar[" + id + "],stadiidosar[" + data.get("idstadiidosar") + "],info[" + datatermen + " - " + data.get("tipsolutie").toString() + "]");
+                    did.put("data", now());
 
-                        Map<String, Object> did = new HashMap<>();
-                        did.put("iduser", client.getUserId());
-                        did.put("iddosar", idd);
-                        did.put("tip", "Modificare termen dosar");
-                        did.put("descriere", "termenedosar[" + id + "],stadiidosar[" + data.get("idstadiidosar") + "],info[" + datatermen + " - " + data.get("tipsolutie").toString() + "]");
-                        did.put("data", now());
+                    String insertSql = "INSERT INTO " + client.getBazaDeDate() + ".istoricdosare(iddosar, iduser, tip, descriere, data) VALUES(:iddosar, :iduser, :tip, :descriere, :data)";
+                    jdbcTemplate.update(insertSql, did);
 
-                        String insertSql = "INSERT INTO " + client.getBazaDeDate() + ".istoricdosare(iddosar, iduser, tip, descriere, data) VALUES(:iddosar, :iduser, :tip, :descriere, :data)";
-                        jdbcTemplate.update(insertSql, did);
-
-                        // If the dosar is monitored and synchronized, automatically add an alert for the termen
-                        int iduser = Integer.parseInt(dosaregetUserId(iddosar));
-                        String idatentionare = getString(data, iddosar, id, iduser);
-                        if (idatentionare != null) return idatentionare;
-                    } else {
-                        // Conditions for update not met; if datatermen or complet is different, insert a new one
-                        if ((datatermen.compareTo(data.get("datatermen").toString()) != 0 && orat > 0) ||
-                                (complet.compareTo(data.get("complet").toString()) != 0)) {
-                            cnt = 0; // It will go to the if (cnt <= 0) branch and perform an INSERT
-                        } else {
-                            return String.valueOf(id);
-                        }
+                    // If the dosar is monitored and synchronized, automatically add an alert for the termen
+                    int iduser = Integer.parseInt(dosaregetUserId(Integer.parseInt(idd)));
+                    String idatentionare = getString(data, Integer.parseInt(idd), id, iduser);
+                    if (idatentionare != null) {
+                        System.out.println("Termene salvate");
+                        return;
                     }
-                }
-
-                if (Objects.equals(cnt, 0)) {
-                    // Insert
-                    Integer id = data.get("id") == null ? null : (Integer) data.get("id");
-                    if (Objects.equals(id, 0)) {
-                        data.remove("id");
-                        String insertSql = "INSERT INTO " + client.getBazaDeDate() + ".termenedosar(datatermen, tipsolutie, sumarsolutie, idstadiudosar, dataDocument, numarDocument, dataluatlacunostinta, complet, sala, dataIntrare) " +
-                                "VALUES(:datatermen, :tipsolutie, :sumarsolutie, :idstadiudosar, :dataDocument, :numarDocument, :dataluatlacunostinta, :complet, :sala, :dataIntrare)";
-                        jdbcTemplate.update(insertSql, data);
-                        id = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
-                        assert id != null;
-                        Map<String, Object> did = new HashMap<>();
-                        did.put("iduser", client.getUserId());
-                        did.put("iddosar", idd);
-                        did.put("tip", "Adaugare termen dosar");
-                        did.put("descriere", "termenedosar[" + id + "],stadiidosar[" + data.get("idstadiudosar") + "],info[" + data.get("datatermen").toString() + " - " + data.get("tipsolutie").toString() + "]");
-                        did.put("data", now());
-
-                        String insertSql2 = "INSERT INTO " + client.getBazaDeDate() + ".istoricdosare(iddosar, iduser, tip, descriere, data) VALUES(:iddosar, :iduser, :tip, :descriere, :data)";
-                        jdbcTemplate.update(insertSql2, did);
-
-                        // If the dosar is monitored and synchronized, automatically add an alert for the termen
-                        if (StringUtils.isNotBlank(String.valueOf(iddosar)) && String.valueOf(iddosar).trim().length() > 0) {
-                            int iduser = getUserIdDosar(iddosar);
-                            String idatentionare = getString(data, iddosar, id, iduser);
-                            if (idatentionare != null) return idatentionare;
-                        }
-                        return "id=" + id;
+                } else {
+                    // Conditions for update not met; if datatermen or complet is different, insert a new one
+                    if ((datatermen.compareTo(data.get("datatermen").toString()) != 0 && orat > 0) ||
+                            (complet.compareTo(data.get("complet").toString()) != 0)) {
+                        cnt = 0; // It will go to the if (cnt <= 0) branch and perform an INSERT
                     } else {
-                        String updateSql = "update " + client.getBazaDeDate() + ".termenedosar set datatermen=:datatermen, tipsolutie=:tipsolutie, sumarsolutie=:sumarsolutie, dataDocument=:dataDocument, numarDocument=:numarDocument, complet=:complet WHERE id=:id";
-                        jdbcTemplate.update(updateSql, data);
-
-                        Map<String, Object> did = new HashMap<>();
-                        did.put("iduser", client.getUserId());
-                        did.put("iddosar", idd);
-                        did.put("tip", "Modificare termen dosar");
-                        did.put("descriere", "termenedosar[" + id + "],stadiidosar[" + data.get("idstadiudosar") + "],info[" + data.get("datatermen").toString() + " - " + data.get("tipsolutie").toString() + "]");
-                        did.put("data", now());
-
-                        String insertSql = "INSERT INTO " + client.getBazaDeDate() + ".istoricdosare(iddosar, iduser, tip, descriere, data) VALUES(:iddosar, :iduser, :tip, :descriere, :data)";
-                        jdbcTemplate.update(insertSql, did);
-
-                        return String.valueOf(id);
+                        return;
                     }
                 }
             }
-            return null;
+
+            if (Objects.equals(cnt, 0)) {
+                // Insert
+                Integer id = data.get("id") == null ? null : (Integer) data.get("id");
+                if (Objects.equals(id, 0)) {
+                    data.remove("id");
+                    String insertSql = "INSERT INTO " + client.getBazaDeDate() + ".termenedosar(datatermen, tipsolutie, sumarsolutie, idstadiudosar, dataDocument, numarDocument, dataluatlacunostinta, complet, sala, dataIntrare) " +
+                            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    jdbcTemplate.update(insertSql,
+                            data.get("datatermen"),
+                            data.get("tipsolutie"),
+                            data.get("sumarsolutie"),
+                            data.get("idstadiudosar"),
+                            data.get("dataDocument"),
+                            data.get("numarDocument"),
+                            data.get("dataluatlacunostinta"),
+                            data.get("complet"),
+                            data.get("sala"),
+                            data.get("dataIntrare"));
+
+                    id = getLastInsertID();
+                    assert id != null;
+                    Map<String, Object> did = new HashMap<>();
+                    did.put("iduser", client.getUserId());
+                    did.put("iddosar", idd);
+                    did.put("tip", "Adaugare termen dosar");
+                    did.put("descriere", "termenedosar[" + id + "],stadiidosar[" + data.get("idstadiudosar") + "],info[" + data.get("datatermen").toString() + " - " + data.get("tipsolutie").toString() + "]");
+                    did.put("data", now());
+
+                    String insertSql2 = "INSERT INTO " + client.getBazaDeDate() + ".istoricdosare(iddosar, iduser, tip, descriere, data) VALUES(?, ?, ?, ?, ?)";
+                    jdbcTemplate.update(insertSql2, did.get("iddosar"), did.get("iduser"), did.get("tip"), did.get("descriere"), did.get("data"));
+
+
+                    // If the dosar is monitored and synchronized, automatically add an alert for the termen
+                    if (StringUtils.isNotBlank(idd) && !idd.trim().isEmpty()) {
+                        int iduser = getUserIdDosar(Integer.parseInt(idd));
+                        String idatentionare = getString(data, Integer.parseInt(idd), id, iduser);
+                        if (idatentionare != null) return;
+                    }
+                } else {
+                    String updateSql = "update " + client.getBazaDeDate() + ".termenedosar set datatermen=?, tipsolutie=?, sumarsolutie=?, dataDocument=?, numarDocument=?, complet=? WHERE id=?";
+                    jdbcTemplate.update(updateSql,
+                            data.get("datatermen"),
+                            data.get("tipsolutie"),
+                            data.get("sumarsolutie"),
+                            data.get("dataDocument"),
+                            data.get("numarDocument"),
+                            data.get("complet"),
+                            data.get("id"));
+
+                    Map<String, Object> did = new HashMap<>();
+                    did.put("iduser", client.getUserId());
+                    did.put("iddosar", idd);
+                    did.put("tip", "Modificare termen dosar");
+                    did.put("descriere", "termenedosar[" + id + "],stadiidosar[" + data.get("idstadiudosar") + "],info[" + data.get("datatermen").toString() + " - " + data.get("tipsolutie").toString() + "]");
+                    did.put("data", now());
+
+                    String insertSql = "INSERT INTO " + client.getBazaDeDate() + ".istoricdosare(iddosar, iduser, tip, descriere, data) VALUES(?, ?, ?, ?, ?)";
+                    jdbcTemplate.update(insertSql,
+                            did.get("iddosar"),
+                            did.get("iduser"),
+                            did.get("tip"),
+                            did.get("descriere"),
+                            did.get("data"));
+
+                    System.out.println("Termene salvate");
+                }
+                return;
+                }
+            System.out.println("Eroare salvare termene");
         } catch (Exception e) {
             e.printStackTrace();
-            return "Eroare la save termendosar: " + e.getMessage();
+            e.getMessage();
         }
+
+    }
+    public Integer getLastInsertID(){
+        return jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
     }
 
     @Nullable
     private String getString(Map<String, Object> data, int iddosar, int id, int iduser) {
-        int estemon = dosarisMonitorizat(iddosar, iduser);
-        int estesin = dosarisSincronizat(iddosar, iduser);
+        int esteMonitorizat = dosarisMonitorizat(iddosar, iduser);
+        int esteSincronizat = dosarisSincronizat(iddosar, iduser);
 
-        if ((estemon + estesin) > 1 && StringUtils.isNotBlank(data.get("datatermen").toString())) {
+        if ((esteMonitorizat + esteSincronizat) > 1 && StringUtils.isNotBlank(data.get("datatermen").toString())) {
             Map<String, Object> optatn = new HashMap<>();
             optatn.put("id", "");
             optatn.put("iddosar", iddosar);
@@ -425,7 +400,7 @@ public class InserareDataAccessService implements InserareDao {
                     // Insert new atentionare
                     String insertSql = "INSERT INTO " + client.getBazaDeDate() + ".atentionari(iddosar, descriere, deladata, panaladata, notificare, reminder, recurent, userid, gcal_eventID, dataluatlacunostinta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)";
                     jdbcTemplate.update(insertSql, data.get("iddosar"), data.get("descriere"), dataat, dataat, data.get("notificare"), data.get("reminder"), data.get("recurent"), data.get("userid"), data.get("gcal_eventID"));
-                    Integer id = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
+                    Integer id = getLastInsertID();
                     assert id != null;
                     idAt = id;
                     // Insert into istoricdosare
@@ -505,20 +480,19 @@ public class InserareDataAccessService implements InserareDao {
                     atentionari.add(attn);
 
                     setNotificariAtentionari(atentionari, userid);
+                    System.out.println("Atentionari salvate");
                 }
 
             }
         }
-                catch(
-    Exception e)
-
+        catch(Exception e)
     {
         e.printStackTrace();
         System.out.println("Eroare la adaugare atentionare: " + e.getMessage());
     }
         return -1;
 }
-    public String setNotificariAtentionari(List<Map<String,Object>> atentionari, int userId) {
+    public void setNotificariAtentionari(List<Map<String,Object>> atentionari, int userId) {
         String licenta = getLicenta();
         String username = (userId != 0) ? getUsernameById(userId) : "";
 
@@ -566,15 +540,13 @@ public class InserareDataAccessService implements InserareDao {
                 reader.close();
 
                 // Parse and return the response here
-                return response.toString();
             } else {
                 // Handle the error
-                return "HTTP Error: " + responseCode;
             }
         } catch (Exception e) {
             // Handle exceptions here
             e.printStackTrace();
-            return "Error: " + e.getMessage();
+            e.getMessage();
         }
     }
     public String getUsernameById(int id) {
@@ -666,6 +638,29 @@ public class InserareDataAccessService implements InserareDao {
 
         return 0;
     }
+    private List<Map<String,String>> corectieDataDocument(SolrFile dosarSolr) {
+        int cnt1 = dosarSolr.getOra() != null ? dosarSolr.getOra().size() : 0;
+        int cnt2 = dosarSolr.getDatadocument() != null ? dosarSolr.getDatadocument().size() : 0;
+        int cnt3 = dosarSolr.getSolutie() != null ? dosarSolr.getSolutie().size() : 0;
+        int cnt4 = dosarSolr.getSolutiesumar() != null ? dosarSolr.getSolutiesumar().size() : 0;
+        int cnt5 = dosarSolr.getNumardocument() != null ? dosarSolr.getNumardocument().size() : 0;
+        int cnt6 = dosarSolr.getDatapronuntare() != null ? dosarSolr.getDatapronuntare().size() : 0;
+        int cnt7 = dosarSolr.getDocumentsedinta() != null ? (dosarSolr.getDocumentsedinta()).size() : 0;
+        int cnt8 = dosarSolr.getDatasedinta() != null ? dosarSolr.getDatasedinta().size() : 0;
+        int cnt9 = dosarSolr.getComplet() != null ? dosarSolr.getComplet().size() : 0;
+        List<Map<String,String>> sedinteList = new ArrayList<>();
+        for (int i = 0; i < min(Arrays.asList(cnt1, cnt2, cnt3, cnt4, cnt5, cnt6, cnt7, cnt8, cnt9)); i++) {
+            if (dosarSolr.getDatasedinta().get(i).toString().contains("1900-01"))
+                dosarSolr.setDataSedintai(i, new Date());
+            if (dosarSolr.getDatadocument().get(i).toString().contains("1900-01"))
+                dosarSolr.setDataDocumenti(i, new Date());
+            if (dosarSolr.getDatapronuntare().get(i).toString().contains("1900-01"))
+                dosarSolr.setDataPronuntarei(i, new Date());
+            final Map<String, String> s = getStringStringMap(dosarSolr, i);
+            sedinteList.add(s);
+        }
+        return sedinteList;
+    }
 
     public String getDenumireParteAdversaDosar( String id) {
 
@@ -724,29 +719,26 @@ public class InserareDataAccessService implements InserareDao {
         String sql = "SELECT numarintern, numardosar, instantadosar, andosar, accesoriidosar, datacreare FROM "+client.getBazaDeDate()+".dosare where id = ?";
 
         try {
-            return jdbcTemplate.queryForObject(sql, new RowMapper<String>() {
-                @Override
-                public String mapRow(ResultSet rs, int rowNum) throws SQLException {
-                    String numarintern = rs.getString("numarintern");
-                    String numardosar = rs.getString("numardosar");
-                    String instantadosar = rs.getString("instantadosar");
-                    String andosar = rs.getString("andosar");
-                    String accesoriidosar = rs.getString("accesoriidosar");
-                    String datacreare = rs.getString("datacreare");
+            return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
+                String numarintern = rs.getString("numarintern");
+                String numardosar = rs.getString("numardosar");
+                String instantadosar = rs.getString("instantadosar");
+                String andosar = rs.getString("andosar");
+                String accesoriidosar = rs.getString("accesoriidosar");
+                String datacreare = rs.getString("datacreare");
 
-                    String nrinst = "";
-                    if (numardosar == null || instantadosar == null || andosar == null) {
-                        if (numarintern != null && !numarintern.trim().isEmpty()) {
-                            nrinst = numarintern.trim(); // ."/"+andc;
-                        }
-                    } else {
-                        nrinst = (numardosar.trim().isEmpty() ? "--" : numardosar.trim()) + "/";
-                        nrinst += (instantadosar.trim().isEmpty() ? "--" : instantadosar.trim()) + "/";
-                        nrinst += (andosar.trim().isEmpty() ? "----" : andosar.trim());
-                        nrinst += (accesoriidosar != null && !accesoriidosar.trim().isEmpty() ? "/" + accesoriidosar.trim() : "");
+                String nrinst = "";
+                if (numardosar == null || instantadosar == null || andosar == null) {
+                    if (numarintern != null && !numarintern.trim().isEmpty()) {
+                        nrinst = numarintern.trim(); // ."/"+andc;
                     }
-                    return nrinst;
+                } else {
+                    nrinst = (numardosar.trim().isEmpty() ? "--" : numardosar.trim()) + "/";
+                    nrinst += (instantadosar.trim().isEmpty() ? "--" : instantadosar.trim()) + "/";
+                    nrinst += (andosar.trim().isEmpty() ? "----" : andosar.trim());
+                    nrinst += (accesoriidosar != null && !accesoriidosar.trim().isEmpty() ? "/" + accesoriidosar.trim() : "");
                 }
+                return nrinst;
             },iddosar);
         } catch (Exception e) {
             return null;
@@ -780,7 +772,7 @@ public class InserareDataAccessService implements InserareDao {
                     //TODO de facut astea la toate
                     String insertQuery = "INSERT INTO " + client.getBazaDeDate() + ".obiectedosar(iddosar, idobiect) VALUES(?, ?)";
                     jdbcTemplate.update(insertQuery, data.get("iddosar"), data.get("idobiect"));
-                    Integer idod = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
+                    Integer idod = getLastInsertID();
                     Map<String, Object> did=new HashMap<>();
                     did.put("iduser", client.getUserId());
                     did.put("iddosar", data.get("iddosar"));
@@ -791,9 +783,11 @@ public class InserareDataAccessService implements InserareDao {
                     jdbcTemplate.update(
                             "INSERT INTO " + client.getBazaDeDate() + ".istoricdosare(iddosar, iduser, tip, descriere, data) VALUES(?, ?, ?, ?, ?)",
                             did.get("iddosar"), did.get("iduser"), did.get("tip"), did.get("descriere"), did.get("data"));
+                    System.out.println("Obiecte salvate");
                     return idod;
             }
         }
+        System.out.println("Eroare salvare obiecte");
         return null;
     }
     public Integer savePartiDosar(Map<String,String> valPD){
@@ -809,8 +803,9 @@ public class InserareDataAccessService implements InserareDao {
                         Integer.class, valPD.get("iddosar"), valPD.get("idobiect"));
             } else {
                 String insertQuery = "INSERT INTO " + client.getBazaDeDate() + ".partidosar(idparte, idcalitate, idstadiudosar) VALUES(?, ?,?)";
+                System.out.println(valPD.get("idstadiudosar")+" "+valPD.get("idparte")+" "+valPD.get("idcalitate"));
                 jdbcTemplate.update(insertQuery, valPD.get("idparte"), valPD.get("idcalitate"),valPD.get("idstadiudosar"));
-                Integer idod = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
+                Integer idod = getLastInsertID();
                 Map<String, Object> did=new HashMap<>();
                 did.put("iduser", client.getUserId());
                 did.put("iddosar", 0);
@@ -821,81 +816,74 @@ public class InserareDataAccessService implements InserareDao {
                 jdbcTemplate.update(
                         "INSERT INTO " + client.getBazaDeDate() + ".istoricdosare(iddosar, iduser, tip, descriere, data) VALUES(?, ?, ?, ?, ?)",
                         did.get("iddosar"), did.get("iduser"), did.get("tip"), did.get("descriere"), did.get("data"));
+                System.out.println("Parti salvate");
                 return idod;
             }
         }
+        System.out.println("Eroare salvare parti");
         return null;
     }
     public Map<String, Object> saveDosar(Map<String, String> data) {
-        if (!data.get("solutiedosar").isEmpty()) {
-            data.put("solutie",(""));
-        }
-        boolean nrd = true;
-
-        if ("".equals(
-                data.get("numardosar") + data.get("instantadosar") + data.get("andosar") + data.get("accesoriidosar"))) {
-            nrd = false;
-            if ("".equals(data.get("numarintern"))) {
-                return null;
-            }
-        }
         String query;
-        Object[] params;
         Integer cnt;
-        if (nrd) {
             query = "SELECT COUNT(*) AS cnt FROM " + client.getBazaDeDate() + ".dosare WHERE numardosar=? AND instantadosar=? AND andosar=? " +
                     "AND accesoriidosar=? AND sters=0";
-            cnt=jdbcTemplate.queryForObject(query, Integer.class, data.get("numardosar"), data.get("instantadosar"), data.get("andosar"), data.get("accesoriidosar"));
-        } else {
-            query = "SELECT COUNT(*) AS cnt FROM " + client.getBazaDeDate() + ".dosare WHERE numarintern=? AND sters=0";
-            cnt=jdbcTemplate.queryForObject(query, Integer.class, data.get("numarintern"));
-        }
+            cnt=jdbcTemplate.queryForObject(query, Integer.class, data.get("numardosar"), data.get("instantadosar"), data.get("andosar"), data.getOrDefault("accesoriidosar",""));
         try {
-            Integer ids;
             if (!Objects.equals(cnt, 0)) {
-                if (nrd) {
-                    query = "SELECT id FROM " + client.getBazaDeDate() + ".dosare WHERE numardosar=? AND instantadosar=? AND andosar=? AND accesoriidosar=? AND sters=0 AND id=? ORDER BY id ASC";
-                    RowMapper<Integer> rowMapper = (rs, rowNum) -> rs.getInt("id");
-                    ids = jdbcTemplate.queryForObject(query, rowMapper, data.get("numardosar"), data.get("instantadosar"), data.get("andosar"), data.get("accesoriidosar"), data.get("id"));
-                } else {
-                    query = "SELECT id FROM " + client.getBazaDeDate() + ".dosare WHERE numarintern=? AND sters=0 AND id=? ORDER BY id ASC";
-                    RowMapper<Integer> rowMapper = (rs, rowNum) -> rs.getInt("id");
-                    ids = jdbcTemplate.queryForObject(query, rowMapper, data.get("numarintern"), data.get("id"));
-                }
                 query = "SELECT COUNT(*) AS cnt FROM " + client.getBazaDeDate() + ".stadiidosar WHERE iddosar=? AND idinstanta=? AND idstadiu=?";
-                //cnt=jdbcTemplate.queryForObject(query, Integer.class, ids.get(0), );
+                cnt=jdbcTemplate.queryForObject(query, Integer.class, data.get("id"), data.get("instantadosar"), data.get("idstadiu"));
                 Map<String, Object> sd = new HashMap<>();
                 if (!Objects.equals(cnt, 0)) {
-                    sd.put("id", "");
-                    sd.put("iddosar", ids);
+                    sd.put("iddosar", data.get("id"));
                     sd.put("idstadiu", data.get("idstadiu"));
-                    sd.put("data", data.get("dataSD"));
+                    sd.put("data", data.get("dataStadiuDosar"));
                     sd.put("idsectie", data.get("idsectie"));
                     sd.put("judecatori", "");
+                    sd.put("idinstanta", data.get("instantadosar"));
                     String idstadiudosar = saveStadiiDosar(sd);
-                    query = "SELECT dataum FROM " + client.getBazaDeDate() + ".dosare WHERE id=? AND dataum<?";
-                    String dataum = jdbcTemplate.queryForObject(query, String.class, data.get("id"), data.get("dataum"));
+                    query = "SELECT dataum FROM " + client.getBazaDeDate() + ".dosare WHERE numardosar=? AND instantadosar=? AND andosar=? AND accesoriidosar=? AND dataum<?";
+                    String dataum = jdbcTemplate.queryForObject(query, String.class, data.get("numardosar"), data.get("instantadosar"), data.get("andosar"), data.getOrDefault("accesoriidosar", ""), data.get("dataum"));
                     if (!Objects.equals(dataum, "")) {
                         Map<String, Object> dumData = new HashMap<>();
                         dumData.put("id", "");
                         dumData.put("dataum", data.get("dataum"));
                         dumData.put("flagpjr", "1");
                         dumData.put("flagscj", "");
+                        dumData.put("numardosar", data.get("numardosar"));
+                        dumData.put("instantadosar", data.get("instantadosar"));
+                        dumData.put("andosar",data.get("andosar"));
+                        dumData.put("accesoriidosar", data.getOrDefault("accesoriidosar",""));
                         actualizareDataum(dumData);
                     }
                     Map<String, Object> rv = new HashMap<>();
-                    rv.put("iddosar", ids);
+                    rv.put("iddosar", data.get("id"));
                     rv.put("idstadiudosar", idstadiudosar);
                     rv.put("dosarnou", "0");
                     return rv;
                 } else {
-                    query = "SELECT id FROM " + client.getBazaDeDate() + ".stadiidosar WHERE iddosar=? AND idinstanta=? AND idstadiu=? LIMIT 1";
-                    String idstadiudosar = jdbcTemplate.queryForObject(query, String.class, ids, data.get("idinstantaStadiuDosar"), data.get("idstadiu"));
-                    Map<String, Object> rv = new HashMap<>();
-                    rv.put("iddosar", ids);
-                    rv.put("idstadiudosar", idstadiudosar);
-                    rv.put("dosarnou", "0");
-                    return rv;
+                    System.out.println(data.get("id")+" "+data.get("instantadosar")+" "+data.get("idstadiu"));
+                    query="SELECT COUNT(*) AS cnt FROM " + client.getBazaDeDate() + ".stadiidosar WHERE iddosar=? AND idinstanta=? AND idstadiu=?";
+                    cnt = jdbcTemplate.queryForObject(query, Integer.class, data.get("id"), data.get("instantadosar"), data.get("idstadiu"));
+                    if(!Objects.equals(cnt,0)){
+                        query = "SELECT id FROM " + client.getBazaDeDate() + ".stadiidosar WHERE iddosar=? AND idinstanta=? AND idstadiu=? LIMIT 1";
+                        String idstadiudosar = jdbcTemplate.queryForObject(query, String.class, data.get("id"), data.get("instantadosar"), data.get("idstadiu"));
+                        Map<String, Object> rv = new HashMap<>();
+                        rv.put("iddosar", data.get("id"));
+                        rv.put("idstadiudosar", idstadiudosar);
+                        rv.put("dosarnou", "0");
+                        return rv;
+                    }
+                    else{
+                        query = "INSERT INTO " + client.getBazaDeDate() + ".stadiidosar(iddosar, idinstanta, idstadiu,data,judecatori,idsectie) VALUES(?, ?, ?,?,?,?)";
+                        jdbcTemplate.update(query, data.get("id"), data.get("instantadosar"), data.get("idstadiu"),new Date(),"",data.get("idsectie"));
+                        Map<String, Object> rv = new HashMap<>();
+                        String idstadiudosar= String.valueOf(getLastInsertID());
+                        rv.put("iddosar", data.get("id"));
+                        rv.put("idstadiudosar", idstadiudosar);
+                        rv.put("dosarnou", "0");
+                        return rv;
+                    }
                 }
             }
             else {
@@ -922,7 +910,7 @@ public class InserareDataAccessService implements InserareDao {
                 if (Objects.equals(data.get("id"), "")) {
                     query="INSERT INTO  " + client.getBazaDeDate() + ".dosare(userid, datacreare, dosarinstanta, numardosar, instantadosar, andosar, accesoriidosar, idclient, idparteadversa, idstare, finalizat, comentarii) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)";
                     jdbcTemplate.update(query, client.getUserId(), dataDosar.get("datacreare"), dataDosar.get("dosarinstanta"),dataDosar.get("numardosar"),dataDosar.get("instantadosar"),dataDosar.get("andosar"),dataDosar.get("accesoriidosar"),dataDosar.get("idclient"),dataDosar.get("idparteadversa"),dataDosar.get("idstare"),dataDosar.get("finalizat"),dataDosar.get("comentarii"));
-                    idod=jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
+                    idod=getLastInsertID();
                     Map<String, Object> did = new HashMap<>();
                     did.put("iduser", client.getUserId());
                     did.put("iddosar", idod);
@@ -965,11 +953,12 @@ public class InserareDataAccessService implements InserareDao {
                 rv.put("iddosar", idod);
                 rv.put("idstadiudosar", idstadiudosar);
                 rv.put("dosarnou", "1");
+                System.out.println("Dosar salvat");
                 return rv;
             }
 
         } catch (Exception e) {
-            System.err.println("Error saving dosar: " + e.getMessage());
+            System.out.println("Eroare salvare dosar");
             e.printStackTrace();
             return null;
         }
@@ -991,27 +980,22 @@ public class InserareDataAccessService implements InserareDao {
                 if (!Objects.equals(cnt, 0)) {
                     String selectIdSql = "SELECT id FROM " + client.getBazaDeDate() + ".stadiidosar WHERE iddosar = ? AND idstadiu = ? " +
                             "AND data = ? AND idinstanta = ? AND idsectie = ? LIMIT 1";
-
                     return jdbcTemplate.queryForObject(selectIdSql, String.class,
                             data.get("iddosar"), data.get("idstadiu"), data.get("data"),
                             data.get("idinstanta"), data.get("idsectie"));
                 } else {
-                    // Insert
-                    String idd = data.get("id").toString();
-                    if (idd == null) {
-                        data.remove("id");
                         String insertSql = "INSERT INTO " + client.getBazaDeDate() + ".stadiidosar(iddosar, idstadiu, data, idinstanta, idsectie, judecatori) " +
                                 "VALUES (?, ?, ?, ?, ?, ?)";
 
                         jdbcTemplate.update(insertSql, data.get("iddosar"), data.get("idstadiu"),
                                 data.get("data"), data.get("idinstanta"), data.get("idsectie"), data.get("judecatori"));
 
-                        String idsd = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", String.class);
+                        Integer idsd = getLastInsertID();
                         Map<String, Object> did = new HashMap<>();
                         did.put("iduser", client.getUserId());
                         did.put("iddosar", data.get("iddosar"));
                         did.put("tip", "Adaugare stadiu dosar");
-                        did.put("descriere", "stadiidosar[" + idsd + "],stadii[" + data.get("idstadiu") +
+                        did.put("descriere", "stadiidosar[" + idsd.toString() + "],stadii[" + data.get("idstadiu") +
                                 "],instante[" + data.get("idinstanta") + "]");
                         did.put("data", now());
 
@@ -1020,34 +1004,12 @@ public class InserareDataAccessService implements InserareDao {
 
                         jdbcTemplate.update(insertHistoricSql, did.get("iddosar"), did.get("iduser"),
                                 did.get("tip"), did.get("descriere"), did.get("data"));
-
-                        return idsd;
-                    } else {
-                        String updateSql = "UPDATE " + client.getBazaDeDate() + ".stadiidosar SET iddosar = ?, idstadiu = ?, data = ?, " +
-                                "idinstanta = ?, idsectie = ?, judecatori = ? WHERE id = ?";
-
-                        jdbcTemplate.update(updateSql, data.get("iddosar"), data.get("idstadiu"),
-                                data.get("data"), data.get("idinstanta"), data.get("idsectie"),
-                                data.get("judecatori"), idd);
-                        Map<String, Object> did = new HashMap<>();
-                        did.put("iduser", client.getUserId());
-                        did.put("iddosar", data.get("iddosar"));
-                        did.put("tip", "Modificare stadiu dosar");
-                        did.put("descriere", "stadiidosar[" + idd + "],stadii[" + data.get("idstadiu") +
-                                "],instante[" + data.get("idinstanta") + "]");
-                        did.put("data", now());
-
-                        String insertHistoricSql = "INSERT INTO " + client.getBazaDeDate() + ".istoricdosare(iddosar, iduser, tip, descriere, data) " +
-                                "VALUES (?, ?, ?, ?, ?)";
-
-                        jdbcTemplate.update(insertHistoricSql, did.get("iddosar"), did.get("iduser"),
-                                did.get("tip"), did.get("descriere"), did.get("data"));
-
-                        return idd;
+                        return idsd.toString();
                     }
                 }
-            } else {
-                return ""; // Incorrect data, nothing to insert
+            else {
+                System.out.println("Eroare salvare stadii");
+                return "";
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -1073,6 +1035,7 @@ public class InserareDataAccessService implements InserareDao {
                             optStadii.get("denumire"), optStadii.get("idmaterie"));
 
                     assert id != null;
+                    System.out.println("Stadii salvate");
                     return id;
                 } else {
                     // Stadii with provided parameters doesn't exist, insert it
@@ -1084,7 +1047,7 @@ public class InserareDataAccessService implements InserareDao {
 
                         jdbcTemplate.update(insertSql, optStadii.get("idmaterie"), optStadii.get("denumire"));
 
-                        Integer ids = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
+                        Integer ids = getLastInsertID();
                         assert ids != null;
                         Map<String, Object> did = new HashMap<>();
                         did.put("iduser", client.getUserId());
@@ -1099,7 +1062,7 @@ public class InserareDataAccessService implements InserareDao {
 
                         jdbcTemplate.update(insertHistoricSql, did.get("iddosar"), did.get("iduser"),
                                 did.get("tip"), did.get("descriere"), did.get("data"));
-
+                        System.out.println("Stadii salvate");
                         return ids;
                     } else {
                         String updateSql = "UPDATE " + client.getBazaDeDate() + ".stadii SET denumire = ?, idmaterie = ? WHERE id = ?";
@@ -1119,11 +1082,12 @@ public class InserareDataAccessService implements InserareDao {
 
                         jdbcTemplate.update(insertHistoricSql, did.get("iddosar"), did.get("iduser"),
                                 did.get("tip"), did.get("descriere"), did.get("data"));
-
+                        System.out.println("Stadii salvate");
                         return Integer.parseInt(id);
                     }
                 }
             } else {
+                System.out.println("Eroare salvarii stadii");
                 return 0; // Cannot insert without both parameters
             }
         } catch (Exception e) {
@@ -1148,6 +1112,7 @@ public class InserareDataAccessService implements InserareDao {
 
                     Integer id = jdbcTemplate.queryForObject(selectIdSql, Integer.class,
                             data.get("denumire"), data.get("idstadiu"));
+                    System.out.println("Calitati salvate");
                     assert id != null;
                     return id;
                 } else {
@@ -1160,7 +1125,7 @@ public class InserareDataAccessService implements InserareDao {
 
                         jdbcTemplate.update(insertSql, data.get("denumire"), data.get("idstadiu"), data.get("calitateclient"));
 
-                        Integer idc = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
+                        Integer idc = getLastInsertID();
                         assert idc != null;
                         Map<String, Object> did = new HashMap<>();
                         did.put("iduser", client.getUserId());
@@ -1174,7 +1139,7 @@ public class InserareDataAccessService implements InserareDao {
 
                         jdbcTemplate.update(insertHistoricSql, did.get("iddosar"), did.get("iduser"),
                                 did.get("tip"), did.get("descriere"), did.get("data"));
-
+                        System.out.println("Calitati salvate");
                         return idc;
                     } else {
                         String updateSql = "UPDATE " + client.getBazaDeDate() + ".calitati SET denumire = ?, idstadiu = ?, calitateclient = ? WHERE id = ?";
@@ -1192,11 +1157,12 @@ public class InserareDataAccessService implements InserareDao {
 
                         jdbcTemplate.update(insertHistoricSql, did.get("iddosar"), did.get("iduser"),
                                 did.get("tip"), did.get("descriere"), did.get("data"));
-
+                        System.out.println("Calitati salvate");
                         return Integer.parseInt(idd);
                     }
                 }
             } else {
+                System.out.println("Eroare salvare calitati");
                 return 0; // Cannot insert without both parameters
             }
         } catch (Exception e) {
@@ -1221,6 +1187,7 @@ public class InserareDataAccessService implements InserareDao {
                     Integer id = jdbcTemplate.queryForObject(selectIdSql, Integer.class,
                             data.get("denumire"), data.get("idmaterie"));
                     assert id != null;
+                    System.out.println("Obiecte salvate");
                     return id;
                 } else {
                     // Insert new denumire/idmaterie or update existing
@@ -1232,7 +1199,7 @@ public class InserareDataAccessService implements InserareDao {
 
                         jdbcTemplate.update(insertSql, data.get("idmaterie"), data.get("denumire"));
 
-                        Integer insertedId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
+                        Integer insertedId = getLastInsertID();
                         assert insertedId != null;
                         Map<String, Object> did = new HashMap<>();
                         did.put("idmaterie", data.get("idmaterie"));
@@ -1243,6 +1210,7 @@ public class InserareDataAccessService implements InserareDao {
                                 "VALUES (?, ?, ?)";
 
                         jdbcTemplate.update(insertHistoricSql, did.get("idmaterie"), did.get("denumire"), did.get("data"));
+                        System.out.println("Obiecte salvate");
 
                         return insertedId;
                     } else {
@@ -1259,6 +1227,7 @@ public class InserareDataAccessService implements InserareDao {
                                 "VALUES (?, ?, ?)";
 
                         jdbcTemplate.update(insertHistoricSql, did.get("idmaterie"), did.get("denumire"), did.get("data"));
+                        System.out.println("Obiecte salvate");
 
                         return Integer.parseInt(idd);
                     }
@@ -1275,7 +1244,7 @@ public class InserareDataAccessService implements InserareDao {
 
                     jdbcTemplate.update(insertSql, data.get("idmaterie"), data.get("denumire"));
 
-                    Integer insertedId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
+                    Integer insertedId = getLastInsertID();
                     assert insertedId != null;
                     Map<String, Object> did = new HashMap<>();
                     did.put("idmaterie", data.get("idmaterie"));
@@ -1286,6 +1255,7 @@ public class InserareDataAccessService implements InserareDao {
                             "VALUES (?, ?, ?)";
 
                     jdbcTemplate.update(insertHistoricSql, did.get("idmaterie"), did.get("denumire"), did.get("data"));
+                    System.out.println("Obiecte salvate");
 
                     return insertedId;
                 } else {
@@ -1302,11 +1272,13 @@ public class InserareDataAccessService implements InserareDao {
                             "VALUES (?, ?, ?)";
 
                     jdbcTemplate.update(insertHistoricSql, did.get("idmaterie"), did.get("denumire"), did.get("data"));
+                    System.out.println("Obiecte salvate");
 
                     return Integer.parseInt(id);
                 }
             }
         } catch (Exception e) {
+            System.out.println("Eroare salvare obiecte");
             e.printStackTrace();
             return 0;
         }
@@ -1330,6 +1302,7 @@ public class InserareDataAccessService implements InserareDao {
                     Integer id = jdbcTemplate.queryForObject(selectIdSql, Integer.class,
                             data.get("numeprenume"), data.get("societate"));
                     assert id != null;
+                    System.out.println("Parti salvate");
                     return id;
                 } else {
                     // Insert new parte or update if it has an id
@@ -1341,7 +1314,7 @@ public class InserareDataAccessService implements InserareDao {
 
                         jdbcTemplate.update(insertSql, data.get("numeprenume"), data.get("societate"));
 
-                        Integer insertedId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
+                        Integer insertedId = getLastInsertID();
                         assert insertedId!= null;
                         Map<String, Object> did = new HashMap<>();
                         did.put("iduser", client.getUserId());
@@ -1355,7 +1328,7 @@ public class InserareDataAccessService implements InserareDao {
 
                         jdbcTemplate.update(insertHistoricSql, did.get("iddosar"), did.get("iduser"), did.get("tip"),
                                 did.get("descriere"), did.get("data"));
-
+                        System.out.println("Parti salvate");
                         return insertedId;
                     } else {
                         data.put("id", idd);
@@ -1380,97 +1353,69 @@ public class InserareDataAccessService implements InserareDao {
 
                         jdbcTemplate.update(insertHistoricSql, did.get("iddosar"), did.get("iduser"), did.get("tip"),
                                 did.get("descriere"), did.get("data"));
-
+                        System.out.println("Parti salvate");
                         return Integer.parseInt(idd);
                     }
                 }
             } else {
+                System.out.println("Eroare salvare parti");
                 return 0; // Cannot insert a parte without nume or societate
             }
         } catch (Exception e) {
+
             e.printStackTrace();
             return 0; // Error occurred
         }
 
     }
-    public int saveMaterii(Map<String,String> data){
+    public int saveMaterii(String denumire){
         try {
 
             // Check for duplicate data
-            if (!data.get("denumirejustro").trim().isEmpty() || !data.get("denumire").trim().isEmpty()) {
+            if (!denumire.trim().isEmpty()) {
                 String selectSql = "SELECT COUNT(*) AS cnt FROM " + client.getBazaDeDate() + ".materii WHERE denumirejustro = ? OR denumire = ?";
 
                 Integer cnt = jdbcTemplate.queryForObject(selectSql, Integer.class,
-                        data.get("denumirejustro"), data.get("denumire"));
+                        denumire, denumire);
 
                 if (!Objects.equals(cnt, 0)) {
                     // Entry with the same denumire or denumirejustro already exists, return its id
                     String selectIdSql = "SELECT id FROM " + client.getBazaDeDate() + ".materii WHERE denumirejustro = ? OR denumire = ? LIMIT 1";
 
                     Integer id = jdbcTemplate.queryForObject(selectIdSql, Integer.class,
-                            data.get("denumirejustro"), data.get("denumire"));
+                            denumire, denumire);
                     assert id != null;
+                    System.out.println("Materii salvate");
                     return id;
                 } else {
                     // Insert new denumire or update if it has an id
-                    if (data.get("denumire").trim().isEmpty())
-                        data.put("denumire", data.get("denumirejustro"));
-                    if (data.get("denumirejustro").trim().isEmpty())
-                        data.put("denumirejustro", data.get("denumire"));
-
-                    String idd =  data.get("id");
-                    if (idd == null) {
-                        data.remove("id");
                         String insertSql = "INSERT INTO " + client.getBazaDeDate() + ".materii(denumire, denumirejustro) " +
                                 "VALUES (?, ?)";
 
-                        jdbcTemplate.update(insertSql, data.get("denumire"), data.get("denumirejustro"));
+                        jdbcTemplate.update(insertSql, denumire, denumire);
 
-                        Integer insertedId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
+                        Integer insertedId = getLastInsertID();
                         assert insertedId != null;
-                        Map<String, Object> did = new HashMap<>();
-                        did.put("iduser", client.getUserId());
-                        did.put("iddosar", 0);
-                        did.put("tip", "Adaugare materie");
-                        did.put("descriere", "materii[" + insertedId + "],info[" + data.get("denumire") + " / " + data.get("denumirejustro") + "]");
-                        did.put("data", now());
-
                         String insertHistoricSql = "INSERT INTO " + client.getBazaDeDate() + ".istoricdosare(iddosar, iduser, tip, descriere, data) " +
                                 "VALUES (?, ?, ?, ?, ?)";
 
-                        jdbcTemplate.update(insertHistoricSql, did.get("iddosar"), did.get("iduser"), did.get("tip"),
-                                did.get("descriere"), did.get("data"));
+                        jdbcTemplate.update(insertHistoricSql, client.getUserId(), 0, "Adaugare materie",
+                                "materii[" + insertedId + "],info[" + denumire + " / " + denumire + "]"
+                                , now());
+                    System.out.println("Materii salvate");
 
                         return insertedId;
-                    } else {
-                        data.put("id", idd);
-                        String updateSql = "UPDATE " + client.getBazaDeDate() + ".materii SET denumire = ?, denumirejustro = ? WHERE id = ?";
 
-                        jdbcTemplate.update(updateSql, data.get("denumire"), data.get("denumirejustro"), idd);
-
-                        Map<String, Object> did = new HashMap<>();
-                        did.put("iduser", client.getUserId());
-                        did.put("iddosar", 0);
-                        did.put("tip", "Modificare materie");
-                        did.put("descriere", "materii[" + idd + "],info[" + data.get("denumire") + " / " + data.get("denumirejustro") + "]");
-                        did.put("data", now());
-
-                        String insertHistoricSql = "INSERT INTO " + client.getBazaDeDate() + ".istoricdosare(iddosar, iduser, tip, descriere, data) " +
-                                "VALUES (?, ?, ?, ?, ?)";
-
-                        jdbcTemplate.update(insertHistoricSql, did.get("iddosar"), did.get("iduser"), did.get("tip"),
-                                did.get("descriere"), did.get("data"));
-
-                        return Integer.parseInt(idd);
-                    }
                 }
             }
         } catch (Exception e) {
+            System.out.println("Eroare salvare materii");
+
             e.printStackTrace();
-            return 0; // Error occurred
+            return 0;
         }
 
-        return 0; // Cannot insert a materie without denumirejustro or denumire
+        return 0;
 }
 
     public int saveSectii(Map<String,String> data){
@@ -1492,6 +1437,8 @@ public class InserareDataAccessService implements InserareDao {
 
                     Integer id = jdbcTemplate.queryForObject(selectIdSql, Integer.class, data.get("denumire"));
                     assert id != null;
+                    System.out.println("Sectii salvate");
+
                     return id;
                 } else {
                     // Insert new denumire or update if it has an id
@@ -1502,7 +1449,7 @@ public class InserareDataAccessService implements InserareDao {
 
                         jdbcTemplate.update(insertSql, data.get("denumire"));
 
-                        Integer insertedId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
+                        Integer insertedId = getLastInsertID();
                         assert insertedId != null;
                         Map<String, Object> did = new HashMap<>();
                         did.put("iduser", client.getUserId());
@@ -1516,7 +1463,7 @@ public class InserareDataAccessService implements InserareDao {
 
                         jdbcTemplate.update(insertHistoricSql, did.get("iddosar"), did.get("iduser"), did.get("tip"),
                                 did.get("descriere"), did.get("data"));
-
+                        System.out.println("Sectii salvate");
                         return insertedId;
                     } else {
                         String updateSql = "UPDATE " + client.getBazaDeDate() + ".sectii SET denumire = ? WHERE id = ?";
@@ -1534,18 +1481,20 @@ public class InserareDataAccessService implements InserareDao {
 
                         jdbcTemplate.update(insertHistoricSql, did.get("iddosar"), did.get("iduser"), did.get("tip"),
                                 did.get("descriere"), did.get("data"));
-
+                        System.out.println("Sectii salvate");
                         return Integer.parseInt(idd);
                     }
                 }
             }
         } catch (Exception e) {
+            System.out.println("Eroare salvare sectii");
             e.printStackTrace();
             return 0; // Error occurred
         }
 
         return 0;
     }
+
     public int getIdInstantaByDenumirejustro(String denumireJustro) {
         Integer id;
 
@@ -1568,38 +1517,40 @@ public class InserareDataAccessService implements InserareDao {
     public Date now() {
         return Date.from(LocalDateTime.parse(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")), DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")).toInstant(ZoneOffset.ofHours(3)));
     }
-    public void actualizareDataum(Map<String, Object> data) {
-        if (!data.containsKey("id") || data.get("id") == null) {
+    public void actualizareDataum(Map<String, Object> data)  {
+        Timestamp dataum = new Timestamp(now().getTime());
+        String selectSql = "SELECT dataum, dataumSCJ FROM " + client.getBazaDeDate() + ".dosare WHERE numardosar=? AND instantadosar=? AND andosar=? " +
+                    "AND accesoriidosar=?";
+        Map<String, Object> result;
+        try {
+            result = jdbcTemplate.queryForMap(selectSql, data.get("numardosar"), data.get("instantadosar"), data.get("andosar"),data.getOrDefault("accesoriidosar",""));
+        } catch (EmptyResultDataAccessException e) {
+            e.printStackTrace();
+            System.out.println("No result found for the given ID.");
             return;
         }
-        Timestamp dataum = (Timestamp) data.get("dataum");
-
-        String selectSql = "SELECT dataum, dataumSCJ FROM " + client.getBazaDeDate() + ".dosare WHERE id = ?";
-        Map<String, Object> result = jdbcTemplate.queryForMap(selectSql, data.get("id"));
-
-        Timestamp dpjr = (Timestamp) result.get("dataum");
-        Timestamp dscj = (Timestamp) result.get("dataumSCJ");
-
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm");
         try {
+            System.out.println(result.get("dataum")+" "+result.get("dataumSCJ"));
+             Date dataum1 = dateFormat.parse(result.get("dataum").toString());
+             Date dataumSCJ = dateFormat.parse(result.get("dataumSCJ").toString());
+            Timestamp dpjr = new Timestamp(dataum1.getTime());
+            Timestamp dscj= new Timestamp(dataumSCJ.getTime());
             if (data.containsKey("flagpjr") && data.get("flagpjr") != null) {
-                if (dpjr == null || dataum.after(dpjr)) {
-                    // Update the dataum field for PJR synchronization
+                if (dataum.after(dpjr)) {
                     String updateSql = "UPDATE " + client.getBazaDeDate() + ".dosare SET dataum = ? WHERE id = ?";
                     jdbcTemplate.update(updateSql, dataum, data.get("id"));
                 }
             }
 
             if (data.containsKey("flagscj") && data.get("flagscj") != null) {
-                if (dscj == null || dataum.after(dscj)) {
-                    // Update the dataumSCJ field for SCJ synchronization
+                if (dataum.after(dscj)) {
                     String updateSql = "UPDATE " + client.getBazaDeDate() + ".dosare SET dataumSCJ = ? WHERE id = ?";
                     jdbcTemplate.update(updateSql, dataum, data.get("id"));
                 }
             }
-
         } catch (Exception e) {
             e.printStackTrace();
-            e.getMessage();
         }
     }
         public int dosarisMonitorizat(int iddosar, int iduser) {

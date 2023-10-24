@@ -13,7 +13,7 @@ import java.util.Date;
 @Getter
 public class Dosar {
     private int id;
-    private int userid;
+    private String userid;
     private Date dataCreare;
     private Date dataUM;
     private String nrIntern;
