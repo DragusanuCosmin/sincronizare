@@ -23,6 +23,7 @@ public class TestController {
 
     @GetMapping("/adaugare")
     public String adaugareDatabase(@RequestParam(value = "numardosar") String numardosar) {
+        System.out.println(numardosar);
         return inserareService.adaugareDatabase(numardosar);
     }
 }

@@ -17,7 +17,7 @@ public class SwaggerConfig {
     public Docket api() {
         return new Docket(DocumentationType.SWAGGER_2)
                 .select()
-                .apis(RequestHandlerSelectors.basePackage("com.example.judupdater"))
+                .apis(RequestHandlerSelectors.basePackage("ro.ctce.sincronizare"))
                 .paths(PathSelectors.any())
                 .build()
                 .apiInfo(apiInfo());
@@ -25,8 +25,8 @@ public class SwaggerConfig {
 
     private ApiInfo apiInfo() {
         return new ApiInfoBuilder()
-                .title("Updater API")
-                .description("API documentation for Judicial Updater")
+                .title("Sincronizare API")
+                .description("Documentatie API Sincronizare")
                 .version("1.0")
                 .build();
     }

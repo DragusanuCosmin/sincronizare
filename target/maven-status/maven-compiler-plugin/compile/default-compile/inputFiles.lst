@@ -1,6 +1,7 @@
 C:\Users\gabri\OneDrive\Documente\GitHub\sincronizare\src\main\java\ro\ctce\sincronizare\Dao\ActualizareDataAccessService.java
 C:\Users\gabri\OneDrive\Documente\GitHub\sincronizare\src\main\java\ro\ctce\sincronizare\Entities\Dosar.java
 C:\Users\gabri\OneDrive\Documente\GitHub\sincronizare\src\main\java\ro\ctce\sincronizare\Listener\KafkaMessageListener.java
+C:\Users\gabri\OneDrive\Documente\GitHub\sincronizare\src\main\java\ro\ctce\sincronizare\Service\LogService.java
 C:\Users\gabri\OneDrive\Documente\GitHub\sincronizare\src\main\java\ro\ctce\sincronizare\Config\SolrConfig.java
 C:\Users\gabri\OneDrive\Documente\GitHub\sincronizare\src\main\java\ro\ctce\sincronizare\Controller\ActualizareBazeDeDate.java
 C:\Users\gabri\OneDrive\Documente\GitHub\sincronizare\src\main\java\ro\ctce\sincronizare\Entities\SolrFile.java

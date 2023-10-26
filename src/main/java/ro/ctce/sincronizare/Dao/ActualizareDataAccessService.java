@@ -1,6 +1,7 @@
 package ro.ctce.sincronizare.Dao;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import ro.ctce.sincronizare.Entities.Clienti;
@@ -8,7 +9,6 @@ import ro.ctce.sincronizare.Entities.Clienti;
 @Repository("ActualizareDao")
 public class ActualizareDataAccessService implements ActualizareDao {
     public final JdbcTemplate jdbcTemplate;
-
     @Autowired
     public ActualizareDataAccessService(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
