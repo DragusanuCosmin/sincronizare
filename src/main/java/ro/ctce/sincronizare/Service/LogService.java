@@ -7,15 +7,19 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 
 public class LogService {
-public static void log(Clienti client){
+public static void log(List<Clienti> clienti,String nrDosar){
     String datastartsync = new SimpleDateFormat("yyyy-MM-dd:HH:mm:ss").format(new Date());
     StringBuilder txt = new StringBuilder();
-    txt.append("Id client: ").append(client.getUserId()).append(System.lineSeparator());
+    txt.append("Id client: ");
+    for(Clienti client:clienti){
+        txt.append(client.getUserId()).append(System.lineSeparator());
+    }
     txt.append("Data incepere sincronizare: ").append(datastartsync).append(System.lineSeparator());
     txt.append("Data sfarsire sincronizare: ").append(new SimpleDateFormat("yyyy-MM-dd:HH:mm:ss").format(new Date())).append(System.lineSeparator());
-    txt.append("Dosar actualizate");
+    txt.append("Dosarul: ").append(nrDosar).append(" actualizat");
     String log = txt + System.lineSeparator() + "-------------------------" + System.lineSeparator();
     txt.setLength(0);
     SimpleDateFormat monthFormat = new SimpleDateFormat("yyyy.MM");

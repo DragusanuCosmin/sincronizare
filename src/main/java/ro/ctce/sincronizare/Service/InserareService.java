@@ -51,8 +51,8 @@ public class InserareService {
             for (Clienti client : clienti) {
                 InserareDataAccessService.setClient(client);
                 inserareDao.Sincronizare(dosarSolr);
-                LogService.log(client);
             }
+            LogService.log(clienti,nrDosar);
         } catch (Exception e) {
             e.printStackTrace();
             return "Eroare500:Eroare sincronizare";

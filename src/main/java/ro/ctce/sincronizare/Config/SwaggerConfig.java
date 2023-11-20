@@ -1,4 +1,4 @@
-package ro.ctce.sincronizare.Config;
+package ro.ctce.monitorizare.Config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,7 +17,7 @@ public class SwaggerConfig {
     public Docket api() {
         return new Docket(DocumentationType.SWAGGER_2)
                 .select()
-                .apis(RequestHandlerSelectors.basePackage("ro.ctce.sincronizare"))
+                .apis(RequestHandlerSelectors.basePackage("ro.ctce.sincronizare.Controller"))
                 .paths(PathSelectors.any())
                 .build()
                 .apiInfo(apiInfo());
@@ -26,8 +26,9 @@ public class SwaggerConfig {
     private ApiInfo apiInfo() {
         return new ApiInfoBuilder()
                 .title("Sincronizare API")
-                .description("Documentatie API Sincronizare")
+                .description("Documentatie API Sincronizare Dosare")
                 .version("1.0")
                 .build();
     }
+
 }

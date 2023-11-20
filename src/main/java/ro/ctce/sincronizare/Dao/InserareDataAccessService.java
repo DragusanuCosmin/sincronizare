@@ -832,7 +832,7 @@ public class InserareDataAccessService implements InserareDao {
             if (!Objects.equals(cnt, 0)) {
                 return jdbcTemplate.queryForObject(
                         "SELECT id FROM " + client.getBazaDeDate() + ".partidosar WHERE idparte=? AND idcalitate=? AND idstadiudosar=? LIMIT 1",
-                        Integer.class, valPD.get("iddosar"), valPD.get("idobiect"));
+                        Integer.class, valPD.get("idparte"), valPD.get("idcalitate"),valPD.get("idstadiudosar"));
             } else {
                 String insertQuery = "INSERT INTO " + client.getBazaDeDate() + ".partidosar(idparte, idcalitate, idstadiudosar) VALUES(?, ?,?)";
                 System.out.println(valPD.get("idstadiudosar")+" "+valPD.get("idparte")+" "+valPD.get("idcalitate"));

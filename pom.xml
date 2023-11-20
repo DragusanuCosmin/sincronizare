@@ -9,8 +9,8 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>ro.ctce.sincronizare</groupId>
-	<artifactId>sincronizare</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<artifactId>updatedosareclienti</artifactId>
+	<version>0.0.2</version>
 	<name>sincronizare</name>
 	<description>Sincronizare proiecte</description>
 	<properties>
